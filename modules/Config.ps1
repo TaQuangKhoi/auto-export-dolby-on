@@ -17,6 +17,7 @@ $script:Config = @{
         ScreenLoad = 2
         PopupAppear = 2
         SaveDialog = 3
+        ReturnToDetail = 2
     }
     
     # Dolby On App Configuration
@@ -34,9 +35,13 @@ $script:Config = @{
             
             # Detail Screen
             ShareButton = "com.dolby.dolby234:id/track_details_share"
+            MoreButton = "com.dolby.dolby234:id/track_details_more"
             
             # Share Popup
             ExportLossless = "com.dolby.dolby234:id/share_option_lossless_audio_item"
+            
+            # More Dialog
+            DeleteOption = "com.dolby.dolby234:id/delete_option"
         }
     }
     

@@ -26,6 +26,9 @@ function New-HtmlReport {
     .PARAMETER DriveScreenElements
     UI elements from Google Drive screen
     
+    .PARAMETER MoreDialogElements
+    UI elements from More dialog (contains Delete option)
+    
     .PARAMETER Timestamp
     Session timestamp string
     #>
@@ -38,6 +41,7 @@ function New-HtmlReport {
         [array]$SharePopupElements = @(),
         [array]$SaveDialogElements = @(),
         [array]$DriveScreenElements = @(),
+        [array]$MoreDialogElements = @(),
         
         [Parameter(Mandatory)]
         [string]$Timestamp
@@ -192,6 +196,32 @@ function New-HtmlReport {
             if ($elem.Text -match 'save|select|folder|drive|recent|shared|cancel|done' -or
                 $elem.ContentDesc -match 'save|select|folder|drive|recent|shared|cancel|done' -or
                 $elem.ResourceId -match 'save|select|folder|button|action|title') {
+                
+                $html += "<div class='element'>"
+                if ($elem.ResourceId) { $html += "<div><span class='element-label'>ID:</span> <code>$($elem.ResourceId)</code></div>" }
+                if ($elem.Text) { $html += "<div><span class='element-label'>Text:</span> $($elem.Text)</div>" }
+                if ($elem.ContentDesc) { $html += "<div><span class='element-label'>Desc:</span> $($elem.ContentDesc)</div>" }
+                if ($elem.Class) { $html += "<div><span class='element-label'>Class:</span> $($elem.Class)</div>" }
+                $html += "</div>"
+            }
+        }
+    }
+
+    $html += @"
+        </div>
+        
+        <div class='section'>
+            <h2>⚙️ More Dialog (Delete Option)</h2>
+"@
+
+    if ($MoreDialogElements.Count -eq 0) {
+        $html += "<p class='warning'>⚠️ No UI elements found in More dialog (may not have been reached)</p>"
+    } else {
+        $html += "<p class='success'>✓ Found $($MoreDialogElements.Count) elements in More dialog</p>"
+        foreach ($elem in $MoreDialogElements) {
+            if ($elem.Text -match 'delete|rename|duplicate|cancel|option' -or
+                $elem.ContentDesc -match 'delete|rename|duplicate|cancel|option' -or
+                $elem.ResourceId -match 'delete|rename|duplicate|option|item') {
                 
                 $html += "<div class='element'>"
                 if ($elem.ResourceId) { $html += "<div><span class='element-label'>ID:</span> <code>$($elem.ResourceId)</code></div>" }

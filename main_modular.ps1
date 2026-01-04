@@ -338,8 +338,8 @@ if ($null -eq $driveButton) {
                     Write-Host "✓ Clicked Save - file is being saved to Google Drive..." -ForegroundColor Green
                     
                     # Wait for save to complete and return to detail screen
-                    Write-Host "Waiting for save to complete..." -ForegroundColor Gray
-                    Start-Sleep -Seconds 3
+                    Write-Host "Waiting for save to complete and return to detail screen..." -ForegroundColor Gray
+                    Start-Sleep -Seconds $config.WaitTimes.ReturnToDetail
                     
                     Write-Host "✓ Export completed! Should now be back at detail screen." -ForegroundColor Green
                 } else {
@@ -355,10 +355,118 @@ if ($null -eq $driveButton) {
 }
 
 # ===================================================================
+# STEP 9: BACK TO DETAIL SCREEN - CLICK MORE BUTTON
+# ===================================================================
+
+Write-Host "`n[STEP 9] Waiting for return to detail screen..." -ForegroundColor Green
+Start-Sleep -Seconds $config.WaitTimes.ScreenLoad
+
+Write-Host "Dumping current screen to verify we're at detail screen..." -ForegroundColor Cyan
+$currentScreenXml = Get-UiDump -AdbPath $adb
+
+if ($null -eq $currentScreenXml) {
+    Write-Host "Failed to get current screen UI dump." -ForegroundColor Red
+} else {
+    # Verify we're on detail screen by checking for More button
+    $moreButton = Find-UiElement -XmlString $currentScreenXml -ResourceId $config.DolbyApp.ResourceIds.MoreButton
+    
+    if ($null -eq $moreButton) {
+        Write-Host "⚠️ More button not found - may not be on detail screen yet" -ForegroundColor Yellow
+        Write-Host "   Waiting a bit longer..." -ForegroundColor Gray
+        Start-Sleep -Seconds 2
+        
+        # Try again
+        $currentScreenXml = Get-UiDump -AdbPath $adb
+        $moreButton = Find-UiElement -XmlString $currentScreenXml -ResourceId $config.DolbyApp.ResourceIds.MoreButton
+    }
+    
+    if ($null -ne $moreButton) {
+        Write-Host "✓ Found More button - clicking to open options menu..." -ForegroundColor Green
+        
+        $clickSuccess = Invoke-TapElement -Element $moreButton -AdbPath $adb -Description "More button"
+        
+        if ($clickSuccess) {
+            # Wait for More dialog to appear
+            Write-Host "Waiting for More dialog..." -ForegroundColor Gray
+            Start-Sleep -Seconds $config.WaitTimes.PopupAppear
+            
+            # ===================================================================
+            # STEP 10: DUMP MORE DIALOG
+            # ===================================================================
+            
+            Write-Host "`n[STEP 10] Dumping More Dialog..." -ForegroundColor Green
+            
+            $moreDialogXml = Get-UiDump -AdbPath $adb
+            
+            if ($null -eq $moreDialogXml) {
+                Write-Host "Failed to get More dialog UI dump." -ForegroundColor Red
+            } else {
+                # Save More dialog dump
+                if ($config.EnableDump) {
+                    $moreDialogDumpPath = Join-Path $dumpsFolder "more_dialog_dump_$timestamp.xml"
+                    Save-UiDump -XmlContent $moreDialogXml -OutputPath $moreDialogDumpPath
+                }
+                
+                # Parse More dialog elements
+                $moreDialogElements = ConvertFrom-UiXml -XmlString $moreDialogXml
+                
+                Write-Host "→ Found $($moreDialogElements.Count) elements in More dialog" -ForegroundColor Cyan
+                
+                # Display all options in More dialog
+                Write-Host "`nAvailable options in More dialog:" -ForegroundColor Yellow
+                $moreDialogElements | Where-Object { 
+                    $_.Text -or $_.ContentDesc -or $_.ResourceId -match 'delete|rename|duplicate|option|item'
+                } | ForEach-Object {
+                    $display = "  • "
+                    if ($_.Text) { $display += "Text: '$($_.Text)' " }
+                    if ($_.ContentDesc) { $display += "Desc: '$($_.ContentDesc)' " }
+                    if ($_.ResourceId) { $display += "ID: $($_.ResourceId)" }
+                    Write-Host $display -ForegroundColor Cyan
+                }
+                
+                # Look for Delete option
+                Write-Host "`nSearching for Delete option..." -ForegroundColor Yellow
+                
+                $deleteOption = Find-UiElement -XmlString $moreDialogXml -Text "Delete"
+                
+                if ($null -eq $deleteOption) {
+                    # Try alternative searches
+                    $deleteOption = Find-UiElement -XmlString $moreDialogXml -ContentDesc "Delete"
+                }
+                
+                if ($null -eq $deleteOption) {
+                    # Try by resource ID
+                    $deleteOption = Find-UiElement -XmlString $moreDialogXml -ResourceId $config.DolbyApp.ResourceIds.DeleteOption
+                }
+                
+                if ($null -eq $deleteOption) {
+                    Write-Host "⚠️ Delete option not found in More dialog" -ForegroundColor Yellow
+                    Write-Host "   Check the elements listed above for the correct identifier" -ForegroundColor Yellow
+                } else {
+                    Write-Host "✓ Found Delete option!" -ForegroundColor Green
+                    Write-Host "   Text: $($deleteOption.Text)" -ForegroundColor Cyan
+                    Write-Host "   Resource-ID: $($deleteOption.ResourceId)" -ForegroundColor Cyan
+                    Write-Host "   Bounds: $($deleteOption.Bounds)" -ForegroundColor Cyan
+                }
+            }
+        } else {
+            Write-Host "Failed to click More button" -ForegroundColor Red
+        }
+    } else {
+        Write-Host "Could not find More button - unable to proceed" -ForegroundColor Red
+    }
+}
+
+# ===================================================================
 # STEP 11: GENERATE HTML REPORT
 # ===================================================================
 
 Write-Host "`n[STEP 11] Generating HTML Report..." -ForegroundColor Green
+
+# Initialize moreDialogElements if not set
+if (-not (Test-Path variable:moreDialogElements)) {
+    $moreDialogElements = @()
+}
 
 if ($config.EnableReport) {
     $reportPath = Join-Path $dumpsFolder "report_$timestamp.html"
@@ -370,6 +478,7 @@ if ($config.EnableReport) {
         -SharePopupElements $sharePopupElements `
         -SaveDialogElements $saveDialogElements `
         -DriveScreenElements $driveScreenElements `
+        -MoreDialogElements $moreDialogElements `
         -Timestamp $timestamp
 }
 
@@ -385,6 +494,8 @@ Write-Host "📊 Summary:" -ForegroundColor Yellow
 Write-Host "  • Tracks found: $($tracks.Count)" -ForegroundColor White
 Write-Host "  • Detail elements: $($detailElements.Count)" -ForegroundColor White
 Write-Host "  • Share popup elements: $($sharePopupElements.Count)" -ForegroundColor White
+Write-Host "  • Save dialog elements: $($saveDialogElements.Count)" -ForegroundColor White
+Write-Host "  • More dialog elements: $($moreDialogElements.Count)" -ForegroundColor White
 Write-Host "  • Save dialog elements: $($saveDialogElements.Count)" -ForegroundColor White
 Write-Host "  • Drive screen elements: $($driveScreenElements.Count)" -ForegroundColor White
 
