@@ -185,10 +185,9 @@ function Get-ScreenText {
     return $elements
 }
 
-# Main automation sequence
-Invoke-Adb "shell input keyevent 3"        # Home
-Start-Sleep -Seconds 1
-Invoke-Adb "shell input tap 540 2100"      # ví dụ: mở app ở dock
+# Main automation sequence (stay in the current app; do not navigate to Home)
+# If you need to open the app via tap, uncomment the line below
+# Invoke-Adb "shell input tap 540 2100"      # ví dụ: mở app ở dock
 Start-Sleep -Seconds 2
 
 # Get UI text from current screen
