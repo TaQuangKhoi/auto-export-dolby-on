@@ -447,6 +447,97 @@ if ($null -eq $currentScreenXml) {
                     Write-Host "   Text: $($deleteOption.Text)" -ForegroundColor Cyan
                     Write-Host "   Resource-ID: $($deleteOption.ResourceId)" -ForegroundColor Cyan
                     Write-Host "   Bounds: $($deleteOption.Bounds)" -ForegroundColor Cyan
+                    
+                    # ===================================================================
+                    # STEP 10A: CLICK DELETE BUTTON
+                    # ===================================================================
+                    
+                    Write-Host "`nClicking Delete option..." -ForegroundColor Yellow
+                    
+                    $clickSuccess = Invoke-TapElement -Element $deleteOption -AdbPath $adb -Description "Delete option"
+                    
+                    if ($clickSuccess) {
+                        Write-Host "✓ Clicked Delete - waiting for confirmation dialog..." -ForegroundColor Green
+                        
+                        # Wait for confirmation dialog
+                        Start-Sleep -Seconds $config.WaitTimes.DeleteConfirm
+                        
+                        # ===================================================================
+                        # STEP 10B: DUMP DELETE CONFIRMATION DIALOG
+                        # ===================================================================
+                        
+                        Write-Host "`n[STEP 10B] Dumping Delete Confirmation Dialog..." -ForegroundColor Green
+                        
+                        $deleteConfirmXml = Get-UiDump -AdbPath $adb
+                        
+                        if ($null -eq $deleteConfirmXml) {
+                            Write-Host "Failed to get confirmation dialog UI dump" -ForegroundColor Red
+                        } else {
+                            # Save confirmation dialog dump
+                            if ($config.EnableDump) {
+                                $deleteConfirmDumpPath = Join-Path $dumpsFolder "delete_confirm_dump_$timestamp.xml"
+                                Save-UiDump -XmlContent $deleteConfirmXml -OutputPath $deleteConfirmDumpPath
+                            }
+                            
+                            # Parse confirmation dialog elements
+                            $deleteConfirmElements = ConvertFrom-UiXml -XmlString $deleteConfirmXml
+                            
+                            Write-Host "→ Found $($deleteConfirmElements.Count) elements in confirmation dialog" -ForegroundColor Cyan
+                            
+                            # Display dialog content
+                            Write-Host "`nConfirmation dialog content:" -ForegroundColor Yellow
+                            $deleteConfirmElements | Where-Object { 
+                                $_.Text -or $_.ContentDesc
+                            } | ForEach-Object {
+                                $display = "  • "
+                                if ($_.Text) { $display += "Text: '$($_.Text)' " }
+                                if ($_.ContentDesc) { $display += "Desc: '$($_.ContentDesc)' " }
+                                if ($_.ResourceId) { $display += "ID: $($_.ResourceId)" }
+                                Write-Host $display -ForegroundColor Cyan
+                            }
+                            
+                            # Look for Confirm/Delete button
+                            Write-Host "`nSearching for Confirm Delete button..." -ForegroundColor Yellow
+                            
+                            # Try to find by text first
+                            $confirmButton = Find-UiElement -XmlString $deleteConfirmXml -Text "Delete"
+                            
+                            if ($null -eq $confirmButton) {
+                                $confirmButton = Find-UiElement -XmlString $deleteConfirmXml -Text "OK"
+                            }
+                            
+                            if ($null -eq $confirmButton) {
+                                $confirmButton = Find-UiElement -XmlString $deleteConfirmXml -Text "Yes"
+                            }
+                            
+                            if ($null -eq $confirmButton) {
+                                # Try by resource ID
+                                $confirmButton = Find-UiElement -XmlString $deleteConfirmXml -ResourceId $config.DolbyApp.ResourceIds.ConfirmDeleteButton
+                            }
+                            
+                            if ($null -eq $confirmButton) {
+                                Write-Host "⚠️ Confirm Delete button not found" -ForegroundColor Yellow
+                                Write-Host "   Check the elements listed above" -ForegroundColor Yellow
+                            } else {
+                                Write-Host "✓ Found Confirm Delete button!" -ForegroundColor Green
+                                Write-Host "   Text: $($confirmButton.Text)" -ForegroundColor Cyan
+                                Write-Host "   Resource-ID: $($confirmButton.ResourceId)" -ForegroundColor Cyan
+                                Write-Host "   Bounds: $($confirmButton.Bounds)" -ForegroundColor Cyan
+                                
+                                Write-Host "`n⚠️  READY TO DELETE TRACK!" -ForegroundColor Red
+                                Write-Host "   To complete deletion, uncomment the click code below" -ForegroundColor Yellow
+                                
+                                # UNCOMMENT BELOW TO ACTUALLY DELETE:
+                                # $clickSuccess = Invoke-TapElement -Element $confirmButton -AdbPath $adb -Description "Confirm Delete"
+                                # if ($clickSuccess) {
+                                #     Write-Host "✓ Track deleted successfully!" -ForegroundColor Green
+                                #     Start-Sleep -Seconds 2
+                                # }
+                            }
+                        }
+                    } else {
+                        Write-Host "Failed to click Delete option" -ForegroundColor Red
+                    }
                 }
             }
         } else {
@@ -463,9 +554,13 @@ if ($null -eq $currentScreenXml) {
 
 Write-Host "`n[STEP 11] Generating HTML Report..." -ForegroundColor Green
 
-# Initialize moreDialogElements if not set
+# Initialize variables if not set
 if (-not (Test-Path variable:moreDialogElements)) {
     $moreDialogElements = @()
+}
+
+if (-not (Test-Path variable:deleteConfirmElements)) {
+    $deleteConfirmElements = @()
 }
 
 if ($config.EnableReport) {
@@ -479,6 +574,7 @@ if ($config.EnableReport) {
         -SaveDialogElements $saveDialogElements `
         -DriveScreenElements $driveScreenElements `
         -MoreDialogElements $moreDialogElements `
+        -DeleteConfirmElements $deleteConfirmElements `
         -Timestamp $timestamp
 }
 
@@ -496,6 +592,7 @@ Write-Host "  • Detail elements: $($detailElements.Count)" -ForegroundColor Wh
 Write-Host "  • Share popup elements: $($sharePopupElements.Count)" -ForegroundColor White
 Write-Host "  • Save dialog elements: $($saveDialogElements.Count)" -ForegroundColor White
 Write-Host "  • More dialog elements: $($moreDialogElements.Count)" -ForegroundColor White
+Write-Host "  • Delete confirm elements: $($deleteConfirmElements.Count)" -ForegroundColor White
 Write-Host "  • Save dialog elements: $($saveDialogElements.Count)" -ForegroundColor White
 Write-Host "  • Drive screen elements: $($driveScreenElements.Count)" -ForegroundColor White
 

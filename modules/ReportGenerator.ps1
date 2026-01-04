@@ -29,6 +29,9 @@ function New-HtmlReport {
     .PARAMETER MoreDialogElements
     UI elements from More dialog (contains Delete option)
     
+    .PARAMETER DeleteConfirmElements
+    UI elements from Delete confirmation dialog
+    
     .PARAMETER Timestamp
     Session timestamp string
     #>
@@ -42,6 +45,7 @@ function New-HtmlReport {
         [array]$SaveDialogElements = @(),
         [array]$DriveScreenElements = @(),
         [array]$MoreDialogElements = @(),
+        [array]$DeleteConfirmElements = @(),
         
         [Parameter(Mandatory)]
         [string]$Timestamp
@@ -230,6 +234,27 @@ function New-HtmlReport {
                 if ($elem.Class) { $html += "<div><span class='element-label'>Class:</span> $($elem.Class)</div>" }
                 $html += "</div>"
             }
+        }
+    }
+
+    $html += @"
+        </div>
+        
+        <div class='section'>
+            <h2>🗑️ Delete Confirmation Dialog</h2>
+"@
+
+    if ($DeleteConfirmElements.Count -eq 0) {
+        $html += "<p class='warning'>⚠️ No UI elements found in Delete confirmation dialog (may not have been reached)</p>"
+    } else {
+        $html += "<p class='success'>✓ Found $($DeleteConfirmElements.Count) elements in Delete confirmation dialog</p>"
+        foreach ($elem in $DeleteConfirmElements) {
+            $html += "<div class='element'>"
+            if ($elem.ResourceId) { $html += "<div><span class='element-label'>ID:</span> <code>$($elem.ResourceId)</code></div>" }
+            if ($elem.Text) { $html += "<div><span class='element-label'>Text:</span> $($elem.Text)</div>" }
+            if ($elem.ContentDesc) { $html += "<div><span class='element-label'>Desc:</span> $($elem.ContentDesc)</div>" }
+            if ($elem.Class) { $html += "<div><span class='element-label'>Class:</span> $($elem.Class)</div>" }
+            $html += "</div>"
         }
     }
 

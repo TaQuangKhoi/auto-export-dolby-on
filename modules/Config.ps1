@@ -18,6 +18,7 @@ $script:Config = @{
         PopupAppear = 2
         SaveDialog = 3
         ReturnToDetail = 2
+        DeleteConfirm = 1
     }
     
     # Dolby On App Configuration
@@ -41,7 +42,10 @@ $script:Config = @{
             ExportLossless = "com.dolby.dolby234:id/share_option_lossless_audio_item"
             
             # More Dialog
-            DeleteOption = "com.dolby.dolby234:id/delete_option"
+            DeleteOption = "android:id/text1"
+            
+            # Delete Confirmation Dialog
+            ConfirmDeleteButton = "android:id/button1"
         }
     }
     
