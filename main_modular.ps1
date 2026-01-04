@@ -260,26 +260,70 @@ if ($null -eq $driveButton) {
     $saveDialogElements | Where-Object { $_.Text } | ForEach-Object {
         Write-Host "     - $($_.Text)" -ForegroundColor Gray
     }
+    $driveScreenElements = @()
+    $driveScreenDumpPath = $null
 } else {
     Write-Host "✓ Found Drive button" -ForegroundColor Green
     
     $clickSuccess = Invoke-TapElement -Element $driveButton -AdbPath $adb -Description "Drive"
     
     if ($clickSuccess) {
-        Write-Host "✓ Clicked Drive - file should now save to Google Drive" -ForegroundColor Green
+        Write-Host "✓ Clicked Drive - loading Google Drive interface..." -ForegroundColor Green
         
-        # Wait a moment for Drive to process
-        Start-Sleep -Seconds 2
+        # Wait for Google Drive screen to load
+        Write-Host "Waiting for Google Drive screen..." -ForegroundColor Gray
+        Start-Sleep -Seconds 3
+        
+        # ===================================================================
+        # STEP 9: DUMP GOOGLE DRIVE SCREEN
+        # ===================================================================
+        
+        Write-Host "`n[STEP 9] Dumping Google Drive Screen..." -ForegroundColor Green
+        
+        $driveScreenXml = Get-UiDump -AdbPath $adb
+        
+        if ($null -eq $driveScreenXml) {
+            Write-Host "Failed to get Google Drive screen UI dump." -ForegroundColor Red
+            $driveScreenElements = @()
+            $driveScreenDumpPath = $null
+        } else {
+            # Save Drive screen dump
+            if ($config.EnableDump) {
+                $driveScreenDumpPath = Join-Path $dumpsFolder "drive_screen_dump_$timestamp.xml"
+                Save-UiDump -XmlContent $driveScreenXml -OutputPath $driveScreenDumpPath
+            }
+            
+            # Parse Drive screen elements
+            $driveScreenElements = ConvertFrom-UiXml -XmlString $driveScreenXml
+            
+            Write-Host "→ Found $($driveScreenElements.Count) elements in Google Drive screen" -ForegroundColor Cyan
+            
+            # Display important buttons/options
+            Write-Host "`nImportant elements in Google Drive screen:" -ForegroundColor Yellow
+            $driveScreenElements | Where-Object { 
+                $_.Text -match 'save|select|folder|my drive|recent|shared|cancel|done' -or
+                $_.ContentDesc -match 'save|select|folder|my drive|recent|shared|cancel|done' -or
+                $_.ResourceId -match 'save|select|folder|button|action'
+            } | Select-Object -First 20 | ForEach-Object {
+                $display = "  • "
+                if ($_.Text) { $display += "Text: '$($_.Text)' " }
+                if ($_.ContentDesc) { $display += "Desc: '$($_.ContentDesc)' " }
+                if ($_.ResourceId) { $display += "ID: $($_.ResourceId)" }
+                Write-Host $display -ForegroundColor Gray
+            }
+        }
     } else {
         Write-Host "Failed to click Drive button" -ForegroundColor Red
+        $driveScreenElements = @()
+        $driveScreenDumpPath = $null
     }
 }
 
 # ===================================================================
-# STEP 9: GENERATE HTML REPORT
+# STEP 10: GENERATE HTML REPORT
 # ===================================================================
 
-Write-Host "`n[STEP 9] Generating HTML Report..." -ForegroundColor Green
+Write-Host "`n[STEP 10] Generating HTML Report..." -ForegroundColor Green
 
 if ($config.EnableReport) {
     $reportPath = Join-Path $dumpsFolder "report_$timestamp.html"
@@ -290,6 +334,7 @@ if ($config.EnableReport) {
         -DetailElements $detailElements `
         -SharePopupElements $sharePopupElements `
         -SaveDialogElements $saveDialogElements `
+        -DriveScreenElements $driveScreenElements `
         -Timestamp $timestamp
 }
 
@@ -306,6 +351,7 @@ Write-Host "  • Tracks found: $($tracks.Count)" -ForegroundColor White
 Write-Host "  • Detail elements: $($detailElements.Count)" -ForegroundColor White
 Write-Host "  • Share popup elements: $($sharePopupElements.Count)" -ForegroundColor White
 Write-Host "  • Save dialog elements: $($saveDialogElements.Count)" -ForegroundColor White
+Write-Host "  • Drive screen elements: $($driveScreenElements.Count)" -ForegroundColor White
 
 if ($config.EnableDump -or $config.EnableReport) {
     Write-Host "`n📁 Generated Files:" -ForegroundColor Yellow
@@ -314,6 +360,7 @@ if ($config.EnableDump -or $config.EnableReport) {
         Write-Host "  • $detailDumpPath" -ForegroundColor Gray
         if ($sharePopupDumpPath) { Write-Host "  • $sharePopupDumpPath" -ForegroundColor Gray }
         if ($saveDialogDumpPath) { Write-Host "  • $saveDialogDumpPath" -ForegroundColor Gray }
+        if ($driveScreenDumpPath) { Write-Host "  • $driveScreenDumpPath" -ForegroundColor Gray }
     }
     if ($config.EnableReport) {
         Write-Host "  • $reportPath" -ForegroundColor White
