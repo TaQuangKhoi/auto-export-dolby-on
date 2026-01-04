@@ -200,22 +200,36 @@ if (-not $clickSuccess) {
     exit 1
 }
 
-# Wait for Android save dialog to appear
-Write-Host "Waiting for Android save dialog..." -ForegroundColor Gray
-Start-Sleep -Seconds $config.WaitTimes.SaveDialog
-
 # ===================================================================
-# STEP 7: DUMP SAVE DIALOG
+# STEP 6A: SMART WAIT FOR EXPORT & SAVE DIALOG
 # ===================================================================
 
-Write-Host "`n[STEP 7] Dumping Android Save Dialog..." -ForegroundColor Green
+Write-Host "`n[STEP 6A] Waiting for export to complete..." -ForegroundColor Green
+Write-Host "⏱️  This may take a while for large files..." -ForegroundColor Cyan
 
-$saveDialogXml = Get-UiDump -AdbPath $adb
+$saveDialogXml = Wait-ForExportCompletion `
+    -AdbPath $adb `
+    -MaxWaitSeconds $config.WaitTimes.ExportMaxWait `
+    -CheckIntervalSeconds $config.WaitTimes.ExportCheckInterval
 
 if ($null -eq $saveDialogXml) {
-    Write-Host "Failed to get save dialog UI dump." -ForegroundColor Red
-    exit 1
+    Write-Host "⚠️ Save Dialog did not appear. Trying to get current UI..." -ForegroundColor Yellow
+    
+    # Try one more time to get current screen
+    Start-Sleep -Seconds 2
+    $saveDialogXml = Get-UiDump -AdbPath $adb
+    
+    if ($null -eq $saveDialogXml) {
+        Write-Host "Failed to get save dialog UI dump. Exiting." -ForegroundColor Red
+        exit 1
+    }
 }
+
+# ===================================================================
+# STEP 7: PROCESS SAVE DIALOG
+# ===================================================================
+
+Write-Host "`n[STEP 7] Processing Android Save Dialog..." -ForegroundColor Green
 
 # Save dialog dump
 if ($config.EnableDump) {

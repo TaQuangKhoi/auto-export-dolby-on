@@ -19,6 +19,8 @@ $script:Config = @{
         SaveDialog = 3
         ReturnToDetail = 2
         DeleteConfirm = 1
+        ExportMaxWait = 300        # Max 5 minutes for export
+        ExportCheckInterval = 2    # Check every 2 seconds
     }
     
     # Dolby On App Configuration

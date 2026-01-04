@@ -150,3 +150,116 @@ function Save-UiDump {
         return $false
     }
 }
+
+function Wait-ForExportCompletion {
+    <#
+    .SYNOPSIS
+    Smart waiting for export completion by detecting Save Dialog appearance
+    
+    .PARAMETER AdbPath
+    Path to ADB executable
+    
+    .PARAMETER MaxWaitSeconds
+    Maximum time to wait for export (default: 300 seconds = 5 minutes)
+    
+    .PARAMETER CheckIntervalSeconds
+    How often to check UI (default: 2 seconds)
+    
+    .OUTPUTS
+    XML string of Save Dialog if found, $null if timeout
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$AdbPath,
+        
+        [int]$MaxWaitSeconds = 300,
+        [int]$CheckIntervalSeconds = 2
+    )
+    
+    Write-Host "Monitoring export progress..." -ForegroundColor Cyan
+    Write-Host "  Looking for Save Dialog to appear..." -ForegroundColor Gray
+    
+    $startTime = Get-Date
+    $exportStarted = $false
+    
+    while (((Get-Date) - $startTime).TotalSeconds -lt $MaxWaitSeconds) {
+        try {
+            # Get current UI state
+            $xmlOutput = & $AdbPath exec-out uiautomator dump /dev/tty 2>&1
+            $fullOutput = $xmlOutput -join "`n"
+            
+            # Extract XML
+            $xmlString = $null
+            if ($fullOutput -match '(<\?xml.*?<hierarchy.*?</hierarchy>)') {
+                $xmlString = $matches[1]
+            }
+            elseif ($fullOutput -match '(<hierarchy.*?</hierarchy>)') {
+                $xmlString = $matches[1]
+            }
+            
+            if ($xmlString) {
+                # Check for Save Dialog indicators (Android DocumentsUI)
+                $hasSaveDialog = $false
+                
+                # Look for DocumentsUI package
+                if ($xmlString -match 'com\.android\.documentsui') {
+                    $hasSaveDialog = $true
+                }
+                
+                # Look for common Save Dialog elements
+                if ($xmlString -match 'text="Save"|content-desc="Save"') {
+                    $hasSaveDialog = $true
+                }
+                
+                # Look for "Drive" option (indicates save location chooser)
+                if ($xmlString -match 'text="Drive"|content-desc="Drive"') {
+                    $hasSaveDialog = $true
+                }
+                
+                if ($hasSaveDialog) {
+                    $elapsed = [math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
+                    Write-Host "✓ Save Dialog appeared! Export completed in $elapsed seconds" -ForegroundColor Green
+                    return $xmlString
+                }
+                
+                # Check if still exporting (progress indicators)
+                $isExporting = $false
+                if ($xmlString -match 'ProgressBar|progress|android\.widget\.ProgressBar') {
+                    $isExporting = $true
+                }
+                if ($xmlString -match 'text="[^"]*(?:Export|Process)[^"]*"') {
+                    $isExporting = $true
+                }
+                
+                if ($isExporting) {
+                    if (-not $exportStarted) {
+                        Write-Host "  ⏳ Export started..." -ForegroundColor Yellow
+                        $exportStarted = $true
+                    }
+                    $elapsed = [math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
+                    Write-Host "  ⏳ Exporting... ($elapsed seconds)" -ForegroundColor Yellow
+                }
+                else {
+                    # No progress bar, no save dialog yet
+                    $elapsed = [math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
+                    Write-Host "  ⏳ Waiting for export to start... ($elapsed seconds)" -ForegroundColor Gray
+                }
+            }
+            else {
+                # Device busy
+                Write-Host "  ⏳ Device busy, retrying..." -ForegroundColor Gray
+            }
+            
+            Start-Sleep -Seconds $CheckIntervalSeconds
+        }
+        catch {
+            Write-Host "  Warning: Error during check: $_" -ForegroundColor Yellow
+            Start-Sleep -Seconds $CheckIntervalSeconds
+        }
+    }
+    
+    # Timeout
+    $elapsed = [math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
+    Write-Host "⚠️ Timeout after $elapsed seconds - Save Dialog did not appear" -ForegroundColor Yellow
+    return $null
+}
