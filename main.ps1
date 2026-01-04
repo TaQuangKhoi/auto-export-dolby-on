@@ -445,7 +445,7 @@ if ($null -eq $detailXmlDump) {
 }
 
 # STEP 5: Generate HTML Report
-Write-Host "\nSTEP 5: Generating HTML Report..." -ForegroundColor Green
+Write-Host "`nSTEP 8: Generating HTML Report..." -ForegroundColor Green
 
 $htmlPath = Join-Path $dumpsFolder "report_$timestamp.html"
 
@@ -487,6 +487,7 @@ $htmlContent = @"
             <p><strong>Total Tracks Found:</strong> $($trackItems.Count)</p>
             <p><strong>First Track Clicked:</strong> $($firstTrack.Title)</p>
             <p><strong>Detail Screen Elements:</strong> $($detailElements.Count)</p>
+            <p><strong>Share Popup Elements:</strong> $(if ($sharePopupElements) { $sharePopupElements.Count } else { 'N/A' })</p>
         </div>
         
         <div class='section'>
@@ -548,10 +549,52 @@ $htmlContent += @"
         </div>
         
         <div class='section'>
+            <h2>� Share Popup - UI Elements</h2>
+"@
+
+if ($null -eq $sharePopupElements -or $sharePopupElements.Count -eq 0) {
+    $htmlContent += "<p style='color: #f44336;'>⚠️ No UI elements found in share popup. Possible reasons:</p>"
+    $htmlContent += "<ul><li>Share button was not clicked successfully</li>"
+    $htmlContent += "<li>Popup did not appear or took too long to load</li>"
+    $htmlContent += "<li>Popup uses custom rendering</li></ul>"
+} else {
+    $htmlContent += "<p>All elements from the share/export popup:</p>"
+    foreach ($elem in $sharePopupElements) {
+        $isImportant = $elem.Text -match 'export|save|wav|mp3|share|dolby' -or
+                       $elem.ContentDesc -match 'export|save|wav|mp3|share|dolby' -or
+                       $elem.ResourceId -match 'export|save|wav|mp3|share|dolby'
+        
+        $elemClass = if ($isImportant) { 'element important' } else { 'element' }
+        
+        $htmlContent += "<div class='$elemClass'>"
+        if (![string]::IsNullOrWhiteSpace($elem.Class)) {
+            $htmlContent += "<div><span class='label'>Class:</span><span class='class value'>$($elem.Class)</span></div>"
+        }
+        if (![string]::IsNullOrWhiteSpace($elem.Text)) {
+            $htmlContent += "<div><span class='label'>Text:</span><span class='text value'>$($elem.Text)</span></div>"
+        }
+        if (![string]::IsNullOrWhiteSpace($elem.ContentDesc)) {
+            $htmlContent += "<div><span class='label'>Content-Desc:</span><span class='desc value'>$($elem.ContentDesc)</span></div>"
+        }
+        if (![string]::IsNullOrWhiteSpace($elem.ResourceId)) {
+            $htmlContent += "<div><span class='label'>Resource-ID:</span><span class='resource value'>$($elem.ResourceId)</span></div>"
+        }
+        if (![string]::IsNullOrWhiteSpace($elem.Bounds)) {
+            $htmlContent += "<div><span class='label'>Bounds:</span><span class='bounds value'>$($elem.Bounds)</span></div>"
+        }
+        $htmlContent += "</div>"
+    }
+}
+
+$htmlContent += @"
+        </div>
+        
+        <div class='section'>
             <h2>📁 Generated Files</h2>
             <ul>
                 <li>Library XML: <code>library_dump_$timestamp.xml</code></li>
                 <li>Detail XML: <code>detail_dump_$timestamp.xml</code></li>
+                <li>Share Popup XML: <code>share_popup_dump_$timestamp.xml</code></li>
                 <li>This Report: <code>report_$timestamp.html</code></li>
             </ul>
         </div>
@@ -559,10 +602,11 @@ $htmlContent += @"
         <div class='section'>
             <h2>🎯 Next Steps</h2>
             <ol>
-                <li>Review highlighted elements (orange background) for export/share buttons</li>
-                <li>Check the XML dumps for additional elements without text/content-desc</li>
-                <li>Identify the correct resource-id for export button</li>
-                <li>Add automation to click export and enable Dolby processing</li>
+                <li>Review share popup elements for export/save options</li>
+                <li>Look for buttons with text like: Export, Save As, WAV, MP3, etc.</li>
+                <li>Check if Dolby processing toggle appears in export options</li>
+                <li>Identify the correct flow: Export -> Format selection -> Dolby toggle</li>
+                <li>Add automation to complete the export with Dolby enabled</li>
             </ol>
         </div>
     </div>
@@ -581,14 +625,91 @@ Write-Host ""
 Write-Host "📁 Files Generated:" -ForegroundColor Yellow
 Write-Host "  - $libraryDumpPath" -ForegroundColor White
 Write-Host "  - $detailDumpPath" -ForegroundColor White
+if ($sharePopupDumpPath) {
+    Write-Host "  - $sharePopupDumpPath" -ForegroundColor White
+}
 Write-Host "  - $htmlPath" -ForegroundColor White
 Write-Host ""
 Write-Host "💡 Open the HTML report in your browser to review!" -ForegroundColor Green
 Write-Host ""
 
+# STEP 6: Click Share Button
+Write-Host "`nSTEP 6: Clicking Share Button..." -ForegroundColor Green
+
+# Find Share button from detail screen
+try {
+    [xml]$detailXml = $detailXmlDump
+    $shareButton = $detailXml.SelectSingleNode("//node[@resource-id='com.dolby.dolby234:id/track_details_share']")
+    
+    if ($null -eq $shareButton) {
+        Write-Host "Share button not found in detail screen!" -ForegroundColor Red
+    } else {
+        $shareBounds = $shareButton.GetAttribute('bounds')
+        Write-Host "Found Share button with bounds: $shareBounds" -ForegroundColor Cyan
+        
+        $shareCenter = Get-BoundsCenter -BoundsString $shareBounds
+        
+        if ($null -ne $shareCenter) {
+            Write-Host "Clicking Share at coordinates: ($($shareCenter.X), $($shareCenter.Y))" -ForegroundColor Green
+            Invoke-Adb "shell input tap $($shareCenter.X) $($shareCenter.Y)"
+            Write-Host "Share button clicked!" -ForegroundColor Green
+            
+            # Wait for share popup/dialog to appear
+            Start-Sleep -Seconds 2
+            
+            # STEP 7: Dump the share popup UI
+            Write-Host "`nSTEP 7: Dumping Share Popup UI..." -ForegroundColor Green
+            $sharePopupXmlDump = Get-UiDump
+            
+            if ($null -eq $sharePopupXmlDump) {
+                Write-Host "Failed to get share popup UI dump." -ForegroundColor Red
+            } else {
+                Write-Host "Share popup UI dumped successfully!" -ForegroundColor Green
+                
+                # Save share popup dump to file
+                $sharePopupDumpPath = Join-Path $dumpsFolder "share_popup_dump_$timestamp.xml"
+                $sharePopupXmlDump | Set-Content -Path $sharePopupDumpPath -Encoding UTF8
+                Write-Host "Saved share popup XML to: $sharePopupDumpPath" -ForegroundColor Cyan
+                
+                # Parse and display share popup elements
+                Write-Host "`n=== Share Popup Elements ===" -ForegroundColor Cyan
+                $sharePopupElements = Parse-UiElements -XmlString $sharePopupXmlDump
+                
+                Write-Host "Found $($sharePopupElements.Count) UI elements in share popup`n" -ForegroundColor Green
+                
+                # Display all elements to help identify export options
+                foreach ($elem in $sharePopupElements) {
+                    Write-Host "---" -ForegroundColor Yellow
+                    if (![string]::IsNullOrWhiteSpace($elem.Class)) {
+                        Write-Host "  Class: $($elem.Class)" -ForegroundColor White
+                    }
+                    if (![string]::IsNullOrWhiteSpace($elem.Text)) {
+                        Write-Host "  Text: $($elem.Text)" -ForegroundColor Yellow
+                    }
+                    if (![string]::IsNullOrWhiteSpace($elem.ContentDesc)) {
+                        Write-Host "  Content-Desc: $($elem.ContentDesc)" -ForegroundColor Cyan
+                    }
+                    if (![string]::IsNullOrWhiteSpace($elem.ResourceId)) {
+                        Write-Host "  Resource-ID: $($elem.ResourceId)" -ForegroundColor Magenta
+                    }
+                    if (![string]::IsNullOrWhiteSpace($elem.Bounds)) {
+                        Write-Host "  Bounds: $($elem.Bounds)" -ForegroundColor Gray
+                    }
+                }
+            }
+        } else {
+            Write-Host "Failed to calculate Share button center coordinates." -ForegroundColor Red
+        }
+    }
+}
+catch {
+    Write-Host "Error clicking Share button: $_" -ForegroundColor Red
+}
+
 # For future AI agents:
 # - The detail screen UI dump is stored in $detailXmlDump
-# - Look for buttons with content-desc or resource-id containing: export, share, save, menu
-# - Common export flow: Click menu/more button -> Click export/share -> Select format/options
-# - Dolby toggle is likely in export options or settings within the detail view
+# - The share popup UI dump is stored in $sharePopupXmlDump
+# - Look for export/save options in the share popup
+# - Common flow: Share popup -> Export/Save As -> Select format -> Enable Dolby processing
+# - Check for buttons with text like: Export, Save, Save As, WAV, MP3, etc.
 
