@@ -524,15 +524,16 @@ if ($null -eq $currentScreenXml) {
                                 Write-Host "   Resource-ID: $($confirmButton.ResourceId)" -ForegroundColor Cyan
                                 Write-Host "   Bounds: $($confirmButton.Bounds)" -ForegroundColor Cyan
                                 
-                                Write-Host "`n⚠️  READY TO DELETE TRACK!" -ForegroundColor Red
-                                Write-Host "   To complete deletion, uncomment the click code below" -ForegroundColor Yellow
+                                Write-Host "`nClicking Delete to confirm..." -ForegroundColor Yellow
                                 
-                                # UNCOMMENT BELOW TO ACTUALLY DELETE:
-                                # $clickSuccess = Invoke-TapElement -Element $confirmButton -AdbPath $adb -Description "Confirm Delete"
-                                # if ($clickSuccess) {
-                                #     Write-Host "✓ Track deleted successfully!" -ForegroundColor Green
-                                #     Start-Sleep -Seconds 2
-                                # }
+                                $clickSuccess = Invoke-TapElement -Element $confirmButton -AdbPath $adb -Description "Confirm Delete"
+                                if ($clickSuccess) {
+                                    Write-Host "✓ Track deleted successfully!" -ForegroundColor Green
+                                    Write-Host "Waiting for UI to update after deletion..." -ForegroundColor Gray
+                                    Start-Sleep -Seconds 2
+                                } else {
+                                    Write-Host "Failed to click Delete confirmation button" -ForegroundColor Red
+                                }
                             }
                         }
                     } else {
