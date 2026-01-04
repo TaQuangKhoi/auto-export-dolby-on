@@ -150,5 +150,3 @@ function Save-UiDump {
         return $false
     }
 }
-
-Export-ModuleMember -Function Get-UiDump, ConvertFrom-UiXml, Save-UiDump

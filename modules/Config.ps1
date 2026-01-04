@@ -50,5 +50,3 @@ $script:Config = @{
 function Get-Config {
     return $script:Config
 }
-
-Export-ModuleMember -Function Get-Config

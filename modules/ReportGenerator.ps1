@@ -190,5 +190,3 @@ function New-HtmlReport {
         return $false
     }
 }
-
-Export-ModuleMember -Function New-HtmlReport

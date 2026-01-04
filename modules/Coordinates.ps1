@@ -123,5 +123,3 @@ function Invoke-TapElement {
     
     return Invoke-TapAt -Coordinates $center -AdbPath $AdbPath -Description $Description
 }
-
-Export-ModuleMember -Function Get-BoundsCenter, Invoke-TapAt, Invoke-TapElement

@@ -147,5 +147,3 @@ function Find-UiElement {
         return $null
     }
 }
-
-Export-ModuleMember -Function Get-TrackList, Find-UiElement

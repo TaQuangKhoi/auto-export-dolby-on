@@ -98,5 +98,3 @@ function Invoke-Adb {
         throw
     }
 }
-
-Export-ModuleMember -Function Initialize-Adb, Invoke-Adb
