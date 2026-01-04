@@ -706,10 +706,253 @@ catch {
     Write-Host "Error clicking Share button: $_" -ForegroundColor Red
 }
 
+# STEP 9: Click Export Lossless Button
+Write-Host "`nSTEP 9: Clicking Export Lossless Button..." -ForegroundColor Green
+
+try {
+    [xml]$sharePopupXml = $sharePopupXmlDump
+    $exportLosslessButton = $sharePopupXml.SelectSingleNode("//node[@resource-id='com.dolby.dolby234:id/share_option_lossless_audio_item']")
+    
+    if ($null -eq $exportLosslessButton) {
+        Write-Host "Export Lossless button not found in share popup!" -ForegroundColor Red
+    } else {
+        $exportBounds = $exportLosslessButton.GetAttribute('bounds')
+        Write-Host "Found Export Lossless button with bounds: $exportBounds" -ForegroundColor Cyan
+        
+        $exportCenter = Get-BoundsCenter -BoundsString $exportBounds
+        
+        if ($null -ne $exportCenter) {
+            Write-Host "Clicking Export Lossless at coordinates: ($($exportCenter.X), $($exportCenter.Y))" -ForegroundColor Green
+            Invoke-Adb "shell input tap $($exportCenter.X) $($exportCenter.Y)"
+            Write-Host "Export Lossless button clicked!" -ForegroundColor Green
+            
+            # Wait for system save dialog to appear
+            Write-Host "Waiting for system save dialog..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 3
+            
+            # STEP 10: Dump the system save dialog UI
+            Write-Host "`nSTEP 10: Dumping System Save Dialog UI..." -ForegroundColor Green
+            $saveDialogXmlDump = Get-UiDump
+            
+            if ($null -eq $saveDialogXmlDump) {
+                Write-Host "Failed to get save dialog UI dump." -ForegroundColor Red
+            } else {
+                Write-Host "Save dialog UI dumped successfully!" -ForegroundColor Green
+                
+                # Save dialog dump to file
+                $saveDialogDumpPath = Join-Path $dumpsFolder "save_dialog_dump_$timestamp.xml"
+                $saveDialogXmlDump | Set-Content -Path $saveDialogDumpPath -Encoding UTF8
+                Write-Host "Saved dialog XML to: $saveDialogDumpPath" -ForegroundColor Cyan
+                
+                # Parse and display save dialog elements
+                Write-Host "`n=== System Save Dialog Elements ===" -ForegroundColor Cyan
+                $saveDialogElements = Parse-UiElements -XmlString $saveDialogXmlDump
+                
+                Write-Host "Found $($saveDialogElements.Count) UI elements in save dialog`n" -ForegroundColor Green
+                
+                # Display all elements to help identify Save button
+                foreach ($elem in $saveDialogElements) {
+                    # Highlight important elements (Save button, file name field, etc.)
+                    $isImportant = $elem.Text -match 'save|cancel|ok|dolby|\.wav|\.mp3' -or
+                                   $elem.ContentDesc -match 'save|cancel|ok|confirm' -or
+                                   $elem.ResourceId -match 'save|cancel|button|edit|filename' -or
+                                   $elem.Class -match 'Button|EditText'
+                    
+                    if ($isImportant) {
+                        Write-Host "---" -ForegroundColor Yellow
+                    } else {
+                        Write-Host "---" -ForegroundColor DarkGray
+                    }
+                    
+                    if (![string]::IsNullOrWhiteSpace($elem.Class)) {
+                        Write-Host "  Class: $($elem.Class)" -ForegroundColor White
+                    }
+                    if (![string]::IsNullOrWhiteSpace($elem.Text)) {
+                        Write-Host "  Text: $($elem.Text)" -ForegroundColor Yellow
+                    }
+                    if (![string]::IsNullOrWhiteSpace($elem.ContentDesc)) {
+                        Write-Host "  Content-Desc: $($elem.ContentDesc)" -ForegroundColor Cyan
+                    }
+                    if (![string]::IsNullOrWhiteSpace($elem.ResourceId)) {
+                        Write-Host "  Resource-ID: $($elem.ResourceId)" -ForegroundColor Magenta
+                    }
+                    if (![string]::IsNullOrWhiteSpace($elem.Bounds)) {
+                        Write-Host "  Bounds: $($elem.Bounds)" -ForegroundColor Gray
+                    }
+                }
+                
+                # Generate HTML Report for Save Dialog
+                Write-Host "`nSTEP 11: Generating Save Dialog HTML Report..." -ForegroundColor Green
+                
+                $saveDialogHtmlPath = Join-Path $dumpsFolder "save_dialog_report_$timestamp.html"
+                
+                $saveDialogHtml = @"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <title>Android System Save Dialog - $timestamp</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 3px solid #4CAF50; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+        .element { background: #fff; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 3px; }
+        .element.important { border-left: 4px solid #FF5722; background: #fff3e0; }
+        .label { font-weight: bold; color: #555; }
+        .value { color: #333; margin-left: 10px; }
+        .class { color: #9C27B0; }
+        .text { color: #FF9800; }
+        .desc { color: #00BCD4; }
+        .resource { color: #E91E63; }
+        .bounds { color: #9E9E9E; font-size: 0.9em; }
+        .summary { background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .timestamp { color: #999; font-size: 0.9em; }
+        .section { margin: 30px 0; }
+        .warning { background: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin: 20px 0; }
+        .info { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <h1>💾 Android System Save Dialog Analysis</h1>
+        <p class='timestamp'>Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
+        
+        <div class='summary'>
+            <h3>📊 Dialog Summary</h3>
+            <p><strong>Total UI Elements:</strong> $($saveDialogElements.Count)</p>
+            <p><strong>Dialog Type:</strong> System File Save Dialog (DocumentsUI)</p>
+            <p><strong>Expected Actions:</strong> Save, Cancel, Choose filename/location</p>
+        </div>
+        
+        <div class='info'>
+            <h3>💡 What to Look For:</h3>
+            <ul>
+                <li><strong>Save Button:</strong> Usually has text "Save", "OK", or similar. May have resource-id like "button1", "save", etc.</li>
+                <li><strong>Cancel Button:</strong> Text "Cancel" or "Dismiss"</li>
+                <li><strong>Filename Field:</strong> EditText element where you can type the filename</li>
+                <li><strong>Location/Folder:</strong> Shows current save location (Downloads, Music, etc.)</li>
+                <li><strong>File Extension:</strong> Should show .wav or .flac for lossless export</li>
+            </ul>
+        </div>
+        
+        <div class='section'>
+            <h2>🔍 All Dialog Elements</h2>
+            <p>Elements are highlighted if they contain important keywords (save, cancel, button, edit, etc.)</p>
+"@
+
+                if ($saveDialogElements.Count -eq 0) {
+                    $saveDialogHtml += @"
+            <div class='warning'>
+                <p><strong>⚠️ No UI elements found!</strong></p>
+                <p>This could mean:</p>
+                <ul>
+                    <li>Dialog didn't appear yet (timing issue)</li>
+                    <li>Dialog uses custom rendering that UIAutomator can't detect</li>
+                    <li>Permission dialog appeared instead of save dialog</li>
+                    <li>App crashed or returned to previous screen</li>
+                </ul>
+                <p><strong>Recommendation:</strong> Try increasing wait time or check device screen manually.</p>
+            </div>
+"@
+                } else {
+                    foreach ($elem in $saveDialogElements) {
+                        $isImportant = $elem.Text -match 'save|cancel|ok|dolby|\.wav|\.mp3|download|music|file' -or
+                                       $elem.ContentDesc -match 'save|cancel|ok|confirm|dismiss' -or
+                                       $elem.ResourceId -match 'save|cancel|button|edit|filename|title' -or
+                                       $elem.Class -match 'Button|EditText'
+                        
+                        $elemClass = if ($isImportant) { 'element important' } else { 'element' }
+                        
+                        $saveDialogHtml += "<div class='$elemClass'>"
+                        if (![string]::IsNullOrWhiteSpace($elem.Class)) {
+                            $saveDialogHtml += "<div><span class='label'>Class:</span><span class='class value'>$($elem.Class)</span></div>"
+                        }
+                        if (![string]::IsNullOrWhiteSpace($elem.Text)) {
+                            $saveDialogHtml += "<div><span class='label'>Text:</span><span class='text value'>$($elem.Text)</span></div>"
+                        }
+                        if (![string]::IsNullOrWhiteSpace($elem.ContentDesc)) {
+                            $saveDialogHtml += "<div><span class='label'>Content-Desc:</span><span class='desc value'>$($elem.ContentDesc)</span></div>"
+                        }
+                        if (![string]::IsNullOrWhiteSpace($elem.ResourceId)) {
+                            $saveDialogHtml += "<div><span class='label'>Resource-ID:</span><span class='resource value'>$($elem.ResourceId)</span></div>"
+                        }
+                        if (![string]::IsNullOrWhiteSpace($elem.Bounds)) {
+                            $saveDialogHtml += "<div><span class='label'>Bounds:</span><span class='bounds value'>$($elem.Bounds)</span></div>"
+                        }
+                        $saveDialogHtml += "</div>"
+                    }
+                }
+
+                $saveDialogHtml += @"
+        </div>
+        
+        <div class='section'>
+            <h2>🎯 Next Steps - How to Automate</h2>
+            <ol>
+                <li><strong>Find Save Button:</strong> Look for element with text "Save" or "OK" - this is your target</li>
+                <li><strong>Extract Bounds:</strong> Get the bounds attribute from the Save button element</li>
+                <li><strong>Calculate Center:</strong> Use the Get-BoundsCenter function to find click coordinates</li>
+                <li><strong>Click It:</strong> Use <code>Invoke-Adb "shell input tap X Y"</code> to click</li>
+                <li><strong>Optional - Modify Filename:</strong> If you need to change the filename:
+                    <ul>
+                        <li>Find the EditText element (filename field)</li>
+                        <li>Click on it to focus</li>
+                        <li>Use <code>adb shell input text "newname"</code> to type</li>
+                        <li>Then click Save</li>
+                    </ul>
+                </li>
+            </ol>
+        </div>
+        
+        <div class='section'>
+            <h2>💻 PowerShell Code Example</h2>
+            <pre style='background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto;'>
+<code># Find and click Save button
+[xml]`$dialogXml = `$saveDialogXmlDump
+`$saveButton = `$dialogXml.SelectSingleNode("//node[@text='Save']")
+
+if (`$null -ne `$saveButton) {
+    `$saveBounds = `$saveButton.GetAttribute('bounds')
+    `$saveCenter = Get-BoundsCenter -BoundsString `$saveBounds
+    
+    Write-Host "Clicking Save at (`$(`$saveCenter.X), `$(`$saveCenter.Y))"
+    Invoke-Adb "shell input tap `$(`$saveCenter.X) `$(`$saveCenter.Y)"
+    Write-Host "File saved!"
+}
+</code></pre>
+        </div>
+        
+        <div class='section'>
+            <h2>📁 Generated Files</h2>
+            <ul>
+                <li>Save Dialog XML: <code>save_dialog_dump_$timestamp.xml</code></li>
+                <li>This Report: <code>save_dialog_report_$timestamp.html</code></li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
+"@
+                
+                $saveDialogHtml | Set-Content -Path $saveDialogHtmlPath -Encoding UTF8
+                Write-Host "Save dialog HTML report saved to: $saveDialogHtmlPath" -ForegroundColor Green
+                Write-Host "`n💡 Open the HTML file in your browser to analyze the dialog structure!" -ForegroundColor Cyan
+            }
+        } else {
+            Write-Host "Failed to calculate Export Lossless button center coordinates." -ForegroundColor Red
+        }
+    }
+}
+catch {
+    Write-Host "Error clicking Export Lossless button: $_" -ForegroundColor Red
+}
+
 # For future AI agents:
 # - The detail screen UI dump is stored in $detailXmlDump
 # - The share popup UI dump is stored in $sharePopupXmlDump
-# - Look for export/save options in the share popup
-# - Common flow: Share popup -> Export/Save As -> Select format -> Enable Dolby processing
-# - Check for buttons with text like: Export, Save, Save As, WAV, MP3, etc.
+# - The save dialog UI dump is stored in $saveDialogXmlDump
+# - Look for Save button in the system dialog (usually has text "Save" or resource-id with "save"/"button1")
+# - Common Android save dialog package: com.android.documentsui
+# - To automate: Find Save button -> Get bounds -> Click center coordinates
 
