@@ -370,7 +370,13 @@ if ($null -eq $xmlDump) {
     Write-Host "Failed to get UI dump. Exiting." -ForegroundColor Red
     exit 1
 }
-
+# Save library dump to file
+$dumpsFolder = Join-Path $PSScriptRoot "dumps"
+New-Item -ItemType Directory -Path $dumpsFolder -Force | Out-Null
+$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+$libraryDumpPath = Join-Path $dumpsFolder "library_dump_$timestamp.xml"
+$xmlDump | Set-Content -Path $libraryDumpPath -Encoding UTF8
+Write-Host "Saved library XML to: $libraryDumpPath" -ForegroundColor Cyan
 # STEP 2: Find all track items in RecyclerView
 Write-Host "`nSTEP 2: Parsing RecyclerView Items..." -ForegroundColor Green
 $trackItems = Get-RecyclerViewItems -XmlString $xmlDump
@@ -402,8 +408,11 @@ $detailXmlDump = Get-UiDump
 if ($null -eq $detailXmlDump) {
     Write-Host "Failed to get detail screen UI dump." -ForegroundColor Red
 } else {
-    Write-Host "Detail screen UI dumped successfully!" -ForegroundColor Green
-    
+    Write-Host "Detail screen UI dumped successfully!" -ForegroundColor Green    
+    # Save detail dump to file
+    $detailDumpPath = Join-Path $dumpsFolder "detail_dump_$timestamp.xml"
+    $detailXmlDump | Set-Content -Path $detailDumpPath -Encoding UTF8
+    Write-Host "Saved detail XML to: $detailDumpPath" -ForegroundColor Cyan    
     # Parse and display elements from detail screen
     Write-Host "`n=== Detail Screen Elements ===" -ForegroundColor Cyan
     $detailElements = Parse-UiElements -XmlString $detailXmlDump
@@ -435,15 +444,146 @@ if ($null -eq $detailXmlDump) {
     }
 }
 
-Write-Host "`n" -ForegroundColor Cyan
+# STEP 5: Generate HTML Report
+Write-Host "\nSTEP 5: Generating HTML Report..." -ForegroundColor Green
+
+$htmlPath = Join-Path $dumpsFolder "report_$timestamp.html"
+
+$htmlContent = @"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <title>Dolby On Automation Report - $timestamp</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 3px solid #4CAF50; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+        .track { background: #f9f9f9; padding: 15px; margin: 10px 0; border-left: 4px solid #2196F3; }
+        .track-title { font-size: 18px; font-weight: bold; color: #2196F3; }
+        .track-meta { color: #666; margin: 5px 0; }
+        .element { background: #fff; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 3px; }
+        .element.important { border-left: 4px solid #FF5722; background: #fff3e0; }
+        .label { font-weight: bold; color: #555; }
+        .value { color: #333; margin-left: 10px; }
+        .class { color: #9C27B0; }
+        .text { color: #FF9800; }
+        .desc { color: #00BCD4; }
+        .resource { color: #E91E63; }
+        .bounds { color: #9E9E9E; font-size: 0.9em; }
+        .summary { background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .timestamp { color: #999; font-size: 0.9em; }
+        .section { margin: 30px 0; }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <h1>📱 Dolby On Automation Report</h1>
+        <p class='timestamp'>Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
+        
+        <div class='summary'>
+            <h3>📊 Summary</h3>
+            <p><strong>Total Tracks Found:</strong> $($trackItems.Count)</p>
+            <p><strong>First Track Clicked:</strong> $($firstTrack.Title)</p>
+            <p><strong>Detail Screen Elements:</strong> $($detailElements.Count)</p>
+        </div>
+        
+        <div class='section'>
+            <h2>📋 Library Screen - Track List</h2>
+"@
+
+foreach ($track in $trackItems) {
+    $htmlContent += @"
+            <div class='track'>
+                <div class='track-title'>$($track.Index). $($track.Title)</div>
+                <div class='track-meta'>📅 $($track.Date) | ⏱️ $($track.Duration)</div>
+                <div class='track-meta'><span class='label'>Bounds:</span><span class='bounds'>$($track.Bounds)</span></div>
+            </div>
+"@
+}
+
+$htmlContent += @"
+        </div>
+        
+        <div class='section'>
+            <h2>🔍 Detail Screen - UI Elements</h2>
+            <p>Showing interactive elements that may contain export/share functionality:</p>
+"@
+
+if ($detailElements.Count -eq 0) {
+    $htmlContent += "<p style='color: #f44336;'>⚠️ No UI elements found on detail screen. This may indicate:</p>"
+    $htmlContent += "<ul><li>The screen uses custom/canvas rendering (games, OpenGL)</li>"
+    $htmlContent += "<li>UI dump timing issue - screen may not have loaded</li>"
+    $htmlContent += "<li>Elements have no text/content-desc/resource-id attributes</li></ul>"
+} else {
+    foreach ($elem in $detailElements) {
+        $isImportant = $elem.Class -match 'Button|ImageView|ImageButton' -or 
+                       $elem.ContentDesc -match 'export|share|save|menu|more' -or
+                       $elem.ResourceId -match 'export|share|save|menu|more|action'
+        
+        $elemClass = if ($isImportant) { 'element important' } else { 'element' }
+        
+        $htmlContent += "<div class='$elemClass'>"
+        if (![string]::IsNullOrWhiteSpace($elem.Class)) {
+            $htmlContent += "<div><span class='label'>Class:</span><span class='class value'>$($elem.Class)</span></div>"
+        }
+        if (![string]::IsNullOrWhiteSpace($elem.Text)) {
+            $htmlContent += "<div><span class='label'>Text:</span><span class='text value'>$($elem.Text)</span></div>"
+        }
+        if (![string]::IsNullOrWhiteSpace($elem.ContentDesc)) {
+            $htmlContent += "<div><span class='label'>Content-Desc:</span><span class='desc value'>$($elem.ContentDesc)</span></div>"
+        }
+        if (![string]::IsNullOrWhiteSpace($elem.ResourceId)) {
+            $htmlContent += "<div><span class='label'>Resource-ID:</span><span class='resource value'>$($elem.ResourceId)</span></div>"
+        }
+        if (![string]::IsNullOrWhiteSpace($elem.Bounds)) {
+            $htmlContent += "<div><span class='label'>Bounds:</span><span class='bounds value'>$($elem.Bounds)</span></div>"
+        }
+        $htmlContent += "</div>"
+    }
+}
+
+$htmlContent += @"
+        </div>
+        
+        <div class='section'>
+            <h2>📁 Generated Files</h2>
+            <ul>
+                <li>Library XML: <code>library_dump_$timestamp.xml</code></li>
+                <li>Detail XML: <code>detail_dump_$timestamp.xml</code></li>
+                <li>This Report: <code>report_$timestamp.html</code></li>
+            </ul>
+        </div>
+        
+        <div class='section'>
+            <h2>🎯 Next Steps</h2>
+            <ol>
+                <li>Review highlighted elements (orange background) for export/share buttons</li>
+                <li>Check the XML dumps for additional elements without text/content-desc</li>
+                <li>Identify the correct resource-id for export button</li>
+                <li>Add automation to click export and enable Dolby processing</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>
+"@
+
+$htmlContent | Set-Content -Path $htmlPath -Encoding UTF8
+Write-Host "HTML report saved to: $htmlPath" -ForegroundColor Green
+
+Write-Host "\n" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  AUTOMATION COMPLETE" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Next Steps:" -ForegroundColor Yellow
-Write-Host "1. Review the detail screen elements above" -ForegroundColor White
-Write-Host "2. Identify export/share button resource IDs" -ForegroundColor White
-Write-Host "3. Add automation to click export and enable Dolby" -ForegroundColor White
+Write-Host "📁 Files Generated:" -ForegroundColor Yellow
+Write-Host "  - $libraryDumpPath" -ForegroundColor White
+Write-Host "  - $detailDumpPath" -ForegroundColor White
+Write-Host "  - $htmlPath" -ForegroundColor White
+Write-Host ""
+Write-Host "💡 Open the HTML report in your browser to review!" -ForegroundColor Green
 Write-Host ""
 
 # For future AI agents:
