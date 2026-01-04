@@ -5,7 +5,7 @@
 
 $script:Config = @{
     # Feature flags
-    EnableDump = $true
+    EnableDump = $false
     EnableReport = $true
     
     # Paths

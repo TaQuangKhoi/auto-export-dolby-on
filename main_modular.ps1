@@ -311,6 +311,41 @@ if ($null -eq $driveButton) {
                 if ($_.ResourceId) { $display += "ID: $($_.ResourceId)" }
                 Write-Host $display -ForegroundColor Gray
             }
+            
+            # ===================================================================
+            # STEP 10: CLICK SAVE BUTTON
+            # ===================================================================
+            
+            Write-Host "`n[STEP 10] Looking for Save button in Google Drive..." -ForegroundColor Green
+            
+            # Try to find Save button by resource-id first (most reliable)
+            $saveButton = Find-UiElement -XmlString $driveScreenXml -ResourceId "com.google.android.apps.docs:id/save_button"
+            
+            if ($null -eq $saveButton) {
+                # Try alternative: find by text
+                $saveButton = Find-UiElement -XmlString $driveScreenXml -Text "Save"
+            }
+            
+            if ($null -eq $saveButton) {
+                Write-Host "⚠️ Save button not found in Google Drive screen." -ForegroundColor Yellow
+                Write-Host "   You may need to manually save the file." -ForegroundColor Yellow
+            } else {
+                Write-Host "✓ Found Save button" -ForegroundColor Green
+                
+                $clickSuccess = Invoke-TapElement -Element $saveButton -AdbPath $adb -Description "Save button"
+                
+                if ($clickSuccess) {
+                    Write-Host "✓ Clicked Save - file is being saved to Google Drive..." -ForegroundColor Green
+                    
+                    # Wait for save to complete and return to detail screen
+                    Write-Host "Waiting for save to complete..." -ForegroundColor Gray
+                    Start-Sleep -Seconds 3
+                    
+                    Write-Host "✓ Export completed! Should now be back at detail screen." -ForegroundColor Green
+                } else {
+                    Write-Host "Failed to click Save button" -ForegroundColor Red
+                }
+            }
         }
     } else {
         Write-Host "Failed to click Drive button" -ForegroundColor Red
@@ -320,10 +355,10 @@ if ($null -eq $driveButton) {
 }
 
 # ===================================================================
-# STEP 10: GENERATE HTML REPORT
+# STEP 11: GENERATE HTML REPORT
 # ===================================================================
 
-Write-Host "`n[STEP 10] Generating HTML Report..." -ForegroundColor Green
+Write-Host "`n[STEP 11] Generating HTML Report..." -ForegroundColor Green
 
 if ($config.EnableReport) {
     $reportPath = Join-Path $dumpsFolder "report_$timestamp.html"
