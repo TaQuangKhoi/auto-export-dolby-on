@@ -8,10 +8,15 @@ class Track:
     date: str
     duration: str
     bounds: str
+    content_desc: str = ""
 
     @property
     def display_name(self) -> str:
         return f"{self.index}. {self.title}"
+
+    @property
+    def track_id(self) -> str:
+        return f"{self.title}|{self.date}|{self.duration}"
 
 
 @dataclass
