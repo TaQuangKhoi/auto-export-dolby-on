@@ -51,3 +51,6 @@ python presentation/main.py
 ## Package Manager
 - Python: `uv` (lockfile: `uv.lock`)
 - Node (`.opencode/`): local install only, not a workspace
+
+## Output Formatting
+All Python output must use [Rich](https://rich.readthedocs.io/en/latest/index.html) for beautiful terminal formatting.

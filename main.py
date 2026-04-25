@@ -140,19 +140,29 @@ def list(
 
     console = Console()
 
+    table = Table(
+        title="[bold]Dolby On Library[/bold]",
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold cyan",
+        show_lines=False,
+        expand=False,
+    )
+    table.add_column("#", justify="right", style="cyan", width=4, no_wrap=True)
+    table.add_column("Title", style="bold")
+    table.add_column("Duration", justify="center", style="yellow", width=10)
+    table.add_column("Date", justify="left", style="green")
+
     def on_page(page_num: int, tracks: list, is_last: bool):
-        if not verbose:
-            return
         if not tracks:
-            console.print(f"  [dim]End of list reached[/dim]")
-            sys.stdout.flush()
             return
         for t in tracks:
-            idx = f"[cyan]{t.index:2}[/cyan]"
-            title = f"[bold]{t.title}[/bold]" if t.title != "(No Title)" else f"[dim](No Title)[/dim]"
-            dur = f"[yellow]({t.duration})[/yellow]" if t.duration else "[dim]()[/dim]"
-            date = f"[green]{t.date}[/green]"
-            console.print(f"  {idx}] {title}  {dur}  {date}")
+            title = t.title if t.title != "(No Title)" else f"[dim](No Title)[/dim]"
+            duration = f"({t.duration})" if t.duration else "[dim]()[/dim]"
+            date = t.date or "[dim]—[/dim]"
+            table.add_row(str(t.index), title, duration, date)
+        if verbose:
+            console.print(f"[dim]Page {page_num} done ({len(tracks)} track(s))[/dim]")
             sys.stdout.flush()
 
     list_use_case = ListTracksUseCase(ctx.adb, ctx.dolby, ctx.ui, CONFIG)
@@ -167,20 +177,8 @@ def list(
         typer.secho("No tracks found in library.", fg=typer.colors.YELLOW)
         return
 
-    table = Table(title=f"[bold]Dolby On Library[/bold]  —  {len(result.tracks)} track(s) found", box=box.ROUNDED)
-    table.add_column("#", style="cyan", width=4, justify="right")
-    table.add_column("Title", style="bold")
-    table.add_column("Duration", style="yellow", width=10, justify="center")
-    table.add_column("Date", style="green")
-
-    for t in result.tracks:
-        title = t.title if t.title != "(No Title)" else "(No Title)"
-        duration = t.duration or "—"
-        date = t.date or "—"
-        table.add_row(str(t.index), title, f"({duration})", date)
-
-    console.print()
     console.print(table)
+    console.print(f"\n[bold]Total:[/bold] {len(result.tracks)} track(s) across {result.total_pages} page(s)")
 
 
 @app.command()
