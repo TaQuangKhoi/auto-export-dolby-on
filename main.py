@@ -128,16 +128,29 @@ def list(
     all: bool = typer.Option(False, "--all", help="Scroll through all pages to list every track"),
     save_xml: Optional[str] = typer.Option(None, "--save-xml", help="Save raw UI XML to a file (single page)"),
     save_xml_folder: Optional[str] = typer.Option(None, "--save-xml-folder", help="Save raw UI XML for each page to a folder"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show each page as it is processed"),
 ):
     """List all tracks in the Dolby On library."""
     ctx.ensure()
     _require_dolby_foreground()
+
+    collected: list = []
+
+    def on_page(page_num: int, tracks: list, is_last: bool):
+        if not verbose:
+            return
+        if tracks:
+            for t in tracks:
+                typer.echo(f"  [Page {page_num}] [{t.index:2}] {t.title}  ({t.duration})  {t.date}")
+        else:
+            typer.echo(f"  [Page {page_num}] (no new tracks - end of list)")
 
     list_use_case = ListTracksUseCase(ctx.adb, ctx.dolby, ctx.ui, CONFIG)
     result = list_use_case.execute(
         scroll_all=all,
         save_xml_path=save_xml,
         save_xml_folder=save_xml_folder,
+        on_page=on_page,
     )
 
     if not result.tracks:

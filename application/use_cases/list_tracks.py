@@ -28,6 +28,7 @@ class ListTracksUseCase:
         scroll_all: bool = False,
         save_xml_path: str | None = None,
         save_xml_folder: str | None = None,
+        on_page: callable | None = None,
     ) -> ListTracksResult:
         seen_track_ids: set[str] = set()
         all_tracks = []
@@ -59,15 +60,17 @@ class ListTracksUseCase:
                     f.write(xml)
 
             page_tracks = self._app.get_track_list(xml, start_index=len(all_tracks) + 1, seen_track_ids=seen_track_ids)
+
+            if on_page:
+                is_last = not scroll_all or not page_tracks
+                on_page(page_count, page_tracks, is_last)
+
             if not page_tracks:
                 break
 
             all_tracks.extend(page_tracks)
 
             if not scroll_all:
-                break
-
-            if not self._app.has_more_items_below(xml):
                 break
 
             self._ui.scroll_down()
