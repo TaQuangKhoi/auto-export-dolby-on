@@ -3,6 +3,9 @@ import time
 from typing import Optional
 
 import typer
+from rich.console import Console
+from rich.table import Table
+from rich import box
 
 from domain.exceptions import AdbNotFoundError
 from domain.interfaces import IAdbClient, IDolbyApp, IUiAutomator, ICoordinates
@@ -129,28 +132,28 @@ def list(
     all: bool = typer.Option(False, "--all", help="Scroll through all pages to list every track"),
     save_xml: Optional[str] = typer.Option(None, "--save-xml", help="Save raw UI XML to a file (single page)"),
     save_xml_folder: Optional[str] = typer.Option(None, "--save-xml-folder", help="Save raw UI XML for each page to a folder"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show each page as it is processed"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show each track as it is listed"),
 ):
     """List all tracks in the Dolby On library."""
     ctx.ensure()
     _require_dolby_foreground()
 
-    collected: list = []
+    console = Console()
 
     def on_page(page_num: int, tracks: list, is_last: bool):
         if not verbose:
             return
-        if tracks:
-            for t in tracks:
-                typer.echo(f"  [Page {page_num}] [{t.index:2}] {t.title}  ({t.duration})  {t.date}")
-                sys.stdout.flush()
-        else:
-            typer.echo(f"  [Page {page_num}] (no new tracks - end of list)")
+        if not tracks:
+            console.print(f"  [dim]End of list reached[/dim]")
             sys.stdout.flush()
-
-    if verbose:
-        typer.echo("Listing tracks (Ctrl+C to stop early)...\n")
-        sys.stdout.flush()
+            return
+        for t in tracks:
+            idx = f"[cyan]{t.index:2}[/cyan]"
+            title = f"[bold]{t.title}[/bold]" if t.title != "(No Title)" else f"[dim](No Title)[/dim]"
+            dur = f"[yellow]({t.duration})[/yellow]" if t.duration else "[dim]()[/dim]"
+            date = f"[green]{t.date}[/green]"
+            console.print(f"  {idx}] {title}  {dur}  {date}")
+            sys.stdout.flush()
 
     list_use_case = ListTracksUseCase(ctx.adb, ctx.dolby, ctx.ui, CONFIG)
     result = list_use_case.execute(
@@ -164,9 +167,20 @@ def list(
         typer.secho("No tracks found in library.", fg=typer.colors.YELLOW)
         return
 
-    typer.echo(f"\nFound {len(result.tracks)} track(s):\n")
+    table = Table(title=f"[bold]Dolby On Library[/bold]  —  {len(result.tracks)} track(s) found", box=box.ROUNDED)
+    table.add_column("#", style="cyan", width=4, justify="right")
+    table.add_column("Title", style="bold")
+    table.add_column("Duration", style="yellow", width=10, justify="center")
+    table.add_column("Date", style="green")
+
     for t in result.tracks:
-        typer.echo(f"  [{t.index:2}] {t.title}  ({t.duration})  {t.date}")
+        title = t.title if t.title != "(No Title)" else "(No Title)"
+        duration = t.duration or "—"
+        date = t.date or "—"
+        table.add_row(str(t.index), title, f"({duration})", date)
+
+    console.print()
+    console.print(table)
 
 
 @app.command()
