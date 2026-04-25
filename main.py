@@ -1,3 +1,4 @@
+import sys
 import time
 from typing import Optional
 
@@ -142,8 +143,14 @@ def list(
         if tracks:
             for t in tracks:
                 typer.echo(f"  [Page {page_num}] [{t.index:2}] {t.title}  ({t.duration})  {t.date}")
+                sys.stdout.flush()
         else:
             typer.echo(f"  [Page {page_num}] (no new tracks - end of list)")
+            sys.stdout.flush()
+
+    if verbose:
+        typer.echo("Listing tracks (Ctrl+C to stop early)...\n")
+        sys.stdout.flush()
 
     list_use_case = ListTracksUseCase(ctx.adb, ctx.dolby, ctx.ui, CONFIG)
     result = list_use_case.execute(
