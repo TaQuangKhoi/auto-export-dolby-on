@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from domain.entities import Track
-from domain.exceptions import AdbCommandError
 from domain.interfaces import IAdbClient, IDolbyApp, IUiAutomator
 
 
@@ -25,33 +24,27 @@ class ListTracksUseCase:
         self._config = config
 
     def execute(self, scroll_all: bool = False, save_xml_path: str | None = None) -> ListTracksResult:
-        all_tracks = []
         seen_bounds: set[str] = set()
+        all_tracks = []
         page_count = 0
+        last_xml = ""
 
         while True:
             xml = self._adb.dump_ui()
+            last_xml = xml
             page_count += 1
 
             if save_xml_path and page_count == 1:
+                import os
+                os.makedirs(os.path.dirname(save_xml_path), exist_ok=True)
                 with open(save_xml_path, "w") as f:
                     f.write(xml)
 
-            page_tracks = self._app.get_track_list(xml, start_index=len(all_tracks) + 1)
+            page_tracks = self._app.get_track_list(xml, start_index=len(all_tracks) + 1, seen_bounds=seen_bounds)
             if not page_tracks:
                 break
 
-            new_tracks = []
-            for track in page_tracks:
-                if track.bounds and track.bounds in seen_bounds:
-                    continue
-                seen_bounds.add(track.bounds)
-                new_tracks.append(track)
-
-            if not new_tracks:
-                break
-
-            all_tracks.extend(new_tracks)
+            all_tracks.extend(page_tracks)
 
             if not scroll_all:
                 break
@@ -62,10 +55,13 @@ class ListTracksUseCase:
             self._ui.scroll_down()
             self._sleep(self._config.get("WaitTimes", {}).get("ScreenLoad", 2))
 
+        for i, track in enumerate(all_tracks, start=1):
+            track.index = i
+
         return ListTracksResult(
             tracks=all_tracks,
             total_pages=page_count,
-            has_more=scroll_all and self._app.has_more_items_below(xml) if xml else False,
+            has_more=scroll_all and self._app.has_more_items_below(last_xml) if last_xml else False,
         )
 
     def _sleep(self, seconds: float) -> None:
