@@ -7,11 +7,11 @@ class DolbyAppHelper:
     def __init__(self, config: dict):
         self._config = config
 
-    def get_track_list(self, xml_string: str, start_index: int = 1, seen_bounds: set[str] | None = None) -> list[Track]:
+    def get_track_list(self, xml_string: str, start_index: int = 1, seen_track_ids: set[str] | None = None) -> list[Track]:
         if not xml_string:
             return []
-        if seen_bounds is None:
-            seen_bounds = set()
+        if seen_track_ids is None:
+            seen_track_ids = set()
 
         try:
             root = ET.fromstring(xml_string)
@@ -30,21 +30,28 @@ class DolbyAppHelper:
             tracks = []
             index = start_index
             for item in recycler.findall(f".//node[@resource-id='{track_item_id}']"):
-                bounds = item.get("bounds", "")
-                if bounds in seen_bounds:
-                    continue
-                seen_bounds.add(bounds)
+                content_desc = item.get("content-desc", "")
 
                 title_node = item.find(f".//node[@resource-id='{title_id}']")
                 date_node = item.find(f".//node[@resource-id='{date_id}']")
                 time_node = item.find(f".//node[@resource-id='{time_id}']")
 
+                title = title_node.get("text", "(No Title)") if title_node is not None else "(No Title)"
+                date = date_node.get("text", "") if date_node is not None else ""
+                duration = time_node.get("text", "") if time_node is not None else ""
+
+                track_id = f"{title}|{date}|{duration}"
+                if track_id in seen_track_ids:
+                    continue
+                seen_track_ids.add(track_id)
+
                 track = Track(
                     index=index,
-                    title=title_node.get("text", "(No Title)") if title_node is not None else "(No Title)",
-                    date=date_node.get("text", "") if date_node is not None else "",
-                    duration=time_node.get("text", "") if time_node is not None else "",
-                    bounds=bounds,
+                    title=title,
+                    date=date,
+                    duration=duration,
+                    bounds=item.get("bounds", ""),
+                    content_desc=content_desc,
                 )
                 tracks.append(track)
                 index += 1
