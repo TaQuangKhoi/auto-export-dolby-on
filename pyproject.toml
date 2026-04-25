@@ -3,4 +3,4 @@ name = "automate-export-dolby-on"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["typer[all]>=0.12.0"]

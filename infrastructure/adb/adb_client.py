@@ -65,10 +65,26 @@ class AdbClient:
             [self.adb_path, "exec-out", "uiautomator", "dump", "/dev/tty"],
             capture_output=True, text=True
         )
-        output = result.stdout
+        output = result.stdout + result.stderr
         import re
         match = re.search(r'(<\?xml.*?<hierarchy.*?</hierarchy>|'
                           r'<hierarchy.*?</hierarchy>)', output, re.DOTALL)
         if match:
             return match.group(1)
-        raise AdbNotFoundError(f"Could not parse UI dump: {output[:200]}")
+
+        err = output.strip()
+        if "no devices/emulators found" in err.lower():
+            raise AdbCommandError(
+                "No Android device connected. Plug in your device, enable USB debugging, "
+                "and run 'adb devices' to verify it shows up."
+            )
+        if "device unauthorized" in err.lower():
+            raise AdbCommandError(
+                "Device unauthorized. Check the authorization prompt on your device "
+                "and run 'adb devices' to verify."
+            )
+        if "device offline" in err.lower():
+            raise AdbCommandError(
+                "Device is offline. Reconnect your device and try again."
+            )
+        raise AdbCommandError(f"Could not parse UI dump: {err[:200]}")
