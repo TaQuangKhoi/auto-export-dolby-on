@@ -23,8 +23,13 @@ class ListTracksUseCase:
         self._ui = ui_automator
         self._config = config
 
-    def execute(self, scroll_all: bool = False, save_xml_path: str | None = None) -> ListTracksResult:
-        seen_bounds: set[str] = set()
+    def execute(
+        self,
+        scroll_all: bool = False,
+        save_xml_path: str | None = None,
+        save_xml_folder: str | None = None,
+    ) -> ListTracksResult:
+        seen_track_ids: set[str] = set()
         all_tracks = []
         page_count = 0
         last_xml = ""
@@ -34,13 +39,26 @@ class ListTracksUseCase:
             last_xml = xml
             page_count += 1
 
-            if save_xml_path and page_count == 1:
-                import os
-                os.makedirs(os.path.dirname(save_xml_path), exist_ok=True)
-                with open(save_xml_path, "w") as f:
+            if save_xml_path:
+                import pathlib
+                p = pathlib.Path(save_xml_path)
+                if p.is_dir():
+                    xml_path = p / f"page{page_count}.xml"
+                else:
+                    xml_path = p.parent / f"{p.stem}{page_count}{p.suffix}"
+                xml_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(xml_path, "w") as f:
                     f.write(xml)
 
-            page_tracks = self._app.get_track_list(xml, start_index=len(all_tracks) + 1, seen_bounds=seen_bounds)
+            if save_xml_folder:
+                import pathlib
+                folder = pathlib.Path(save_xml_folder)
+                folder.mkdir(parents=True, exist_ok=True)
+                xml_path = folder / f"page{page_count}.xml"
+                with open(xml_path, "w") as f:
+                    f.write(xml)
+
+            page_tracks = self._app.get_track_list(xml, start_index=len(all_tracks) + 1, seen_track_ids=seen_track_ids)
             if not page_tracks:
                 break
 
