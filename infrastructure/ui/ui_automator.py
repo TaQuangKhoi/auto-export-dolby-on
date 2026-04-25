@@ -76,3 +76,9 @@ class UiAutomator:
             re.search(r'text="Save"|content-desc="Save"', xml) or
             re.search(r'text="Drive"|content-desc="Drive"', xml)
         )
+
+    def scroll_down(self, duration_ms: int = 800) -> None:
+        self._adb.swipe(540, 1800, 540, 600, duration_ms)
+
+    def scroll_up(self, duration_ms: int = 800) -> None:
+        self._adb.swipe(540, 600, 540, 1800, duration_ms)
