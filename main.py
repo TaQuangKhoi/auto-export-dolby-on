@@ -138,47 +138,23 @@ def list(
     ctx.ensure()
     _require_dolby_foreground()
 
-    console = Console()
+    from infrastructure.reporting import RichTrackListPresenter
+    presenter = RichTrackListPresenter(verbose=verbose)
 
-    table = Table(
-        title="[bold]Dolby On Library[/bold]",
-        box=box.ROUNDED,
-        show_header=True,
-        header_style="bold cyan",
-        show_lines=False,
-        expand=False,
+    list_use_case = ListTracksUseCase(
+        ctx.adb, ctx.dolby, ctx.ui, CONFIG, presenter=presenter
     )
-    table.add_column("#", justify="right", style="cyan", width=4, no_wrap=True)
-    table.add_column("Title", style="bold")
-    table.add_column("Duration", justify="center", style="yellow", width=10)
-    table.add_column("Date", justify="left", style="green")
-
-    def on_page(page_num: int, tracks: list, is_last: bool):
-        if not tracks:
-            return
-        for t in tracks:
-            title = t.title if t.title != "(No Title)" else f"[dim](No Title)[/dim]"
-            duration = f"({t.duration})" if t.duration else "[dim]()[/dim]"
-            date = t.date or "[dim]—[/dim]"
-            table.add_row(str(t.index), title, duration, date)
-        if verbose:
-            console.print(f"[dim]Page {page_num} done ({len(tracks)} track(s))[/dim]")
-            sys.stdout.flush()
-
-    list_use_case = ListTracksUseCase(ctx.adb, ctx.dolby, ctx.ui, CONFIG)
     result = list_use_case.execute(
         scroll_all=all,
         save_xml_path=save_xml,
         save_xml_folder=save_xml_folder,
-        on_page=on_page,
     )
 
     if not result.tracks:
         typer.secho("No tracks found in library.", fg=typer.colors.YELLOW)
         return
 
-    console.print(table)
-    console.print(f"\n[bold]Total:[/bold] {len(result.tracks)} track(s) across {result.total_pages} page(s)")
+    presenter.present_final(result.tracks, result.total_pages)
 
 
 @app.command()

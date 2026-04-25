@@ -66,3 +66,13 @@ class IReportGenerator(Protocol):
     @abstractmethod
     def generate(self, output_path: str, **kwargs) -> None:
         ...
+
+
+class ITrackPresenter(Protocol):
+    @abstractmethod
+    def present_page(self, tracks: list, page_num: int) -> None:
+        ...
+
+    @abstractmethod
+    def present_final(self, tracks: list, total_pages: int) -> None:
+        ...

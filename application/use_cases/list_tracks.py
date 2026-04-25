@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from domain.entities import Track
-from domain.interfaces import IAdbClient, IDolbyApp, IUiAutomator
+from domain.interfaces import IAdbClient, IDolbyApp, IUiAutomator, ITrackPresenter
 
 
 @dataclass
@@ -17,18 +17,19 @@ class ListTracksUseCase:
         dolby_app: IDolbyApp,
         ui_automator: IUiAutomator,
         config: dict,
+        presenter: ITrackPresenter | None = None,
     ):
         self._adb = adb_client
         self._app = dolby_app
         self._ui = ui_automator
         self._config = config
+        self._presenter = presenter
 
     def execute(
         self,
         scroll_all: bool = False,
         save_xml_path: str | None = None,
         save_xml_folder: str | None = None,
-        on_page: callable | None = None,
     ) -> ListTracksResult:
         seen_track_ids: set[str] = set()
         all_tracks = []
@@ -61,14 +62,13 @@ class ListTracksUseCase:
 
             page_tracks = self._app.get_track_list(xml, start_index=len(all_tracks) + 1, seen_track_ids=seen_track_ids)
 
-            if on_page:
-                is_last = not scroll_all or not page_tracks
-                on_page(page_count, page_tracks, is_last)
-
             if not page_tracks:
                 break
 
             all_tracks.extend(page_tracks)
+
+            if self._presenter:
+                self._presenter.present_page(page_tracks, page_count)
 
             if not scroll_all:
                 break
@@ -78,6 +78,9 @@ class ListTracksUseCase:
 
         for i, track in enumerate(all_tracks, start=1):
             track.index = i
+
+        if self._presenter:
+            self._presenter.present_final(all_tracks, page_count)
 
         return ListTracksResult(
             tracks=all_tracks,
