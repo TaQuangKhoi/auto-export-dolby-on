@@ -1,0 +1,48 @@
+from abc import ABC, abstractmethod
+from typing import Protocol
+
+
+class IAdbClient(Protocol):
+    @abstractmethod
+    def find_adb(self) -> str | None:
+        ...
+
+    @abstractmethod
+    def tap_at(self, x: int, y: int) -> None:
+        ...
+
+    @abstractmethod
+    def dump_ui(self) -> str:
+        ...
+
+
+class IUiAutomator(Protocol):
+    @abstractmethod
+    def parse_elements(self, xml_string: str) -> list[dict]:
+        ...
+
+    @abstractmethod
+    def wait_for_export_completion(self, max_wait: int = 300) -> str | None:
+        ...
+
+
+class ICoordinates(Protocol):
+    @abstractmethod
+    def bounds_to_center(self, bounds: str) -> tuple[int, int]:
+        ...
+
+
+class IDolbyApp(Protocol):
+    @abstractmethod
+    def get_track_list(self, xml_string: str) -> list:
+        ...
+
+    @abstractmethod
+    def find_element(self, xml_string: str, **attrs) -> dict | None:
+        ...
+
+
+class IReportGenerator(Protocol):
+    @abstractmethod
+    def generate(self, output_path: str, **kwargs) -> None:
+        ...
