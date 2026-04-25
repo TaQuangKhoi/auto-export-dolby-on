@@ -126,14 +126,19 @@ def status():
 @app.command()
 def list(
     all: bool = typer.Option(False, "--all", help="Scroll through all pages to list every track"),
-    save_xml: Optional[str] = typer.Option(None, "--save-xml", help="Save raw UI XML dump to a file for debugging"),
+    save_xml: Optional[str] = typer.Option(None, "--save-xml", help="Save raw UI XML to a file (single page)"),
+    save_xml_folder: Optional[str] = typer.Option(None, "--save-xml-folder", help="Save raw UI XML for each page to a folder"),
 ):
     """List all tracks in the Dolby On library."""
     ctx.ensure()
     _require_dolby_foreground()
 
     list_use_case = ListTracksUseCase(ctx.adb, ctx.dolby, ctx.ui, CONFIG)
-    result = list_use_case.execute(scroll_all=all, save_xml_path=save_xml)
+    result = list_use_case.execute(
+        scroll_all=all,
+        save_xml_path=save_xml,
+        save_xml_folder=save_xml_folder,
+    )
 
     if not result.tracks:
         typer.secho("No tracks found in library.", fg=typer.colors.YELLOW)
