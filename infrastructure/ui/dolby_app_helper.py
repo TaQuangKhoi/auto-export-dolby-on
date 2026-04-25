@@ -7,9 +7,12 @@ class DolbyAppHelper:
     def __init__(self, config: dict):
         self._config = config
 
-    def get_track_list(self, xml_string: str, start_index: int = 1) -> list[Track]:
+    def get_track_list(self, xml_string: str, start_index: int = 1, seen_bounds: set[str] | None = None) -> list[Track]:
         if not xml_string:
             return []
+        if seen_bounds is None:
+            seen_bounds = set()
+
         try:
             root = ET.fromstring(xml_string)
             dolby_cfg = self._config.get("DolbyApp", {})
@@ -27,6 +30,11 @@ class DolbyAppHelper:
             tracks = []
             index = start_index
             for item in recycler.findall(f".//node[@resource-id='{track_item_id}']"):
+                bounds = item.get("bounds", "")
+                if bounds in seen_bounds:
+                    continue
+                seen_bounds.add(bounds)
+
                 title_node = item.find(f".//node[@resource-id='{title_id}']")
                 date_node = item.find(f".//node[@resource-id='{date_id}']")
                 time_node = item.find(f".//node[@resource-id='{time_id}']")
@@ -36,7 +44,7 @@ class DolbyAppHelper:
                     title=title_node.get("text", "(No Title)") if title_node is not None else "(No Title)",
                     date=date_node.get("text", "") if date_node is not None else "",
                     duration=time_node.get("text", "") if time_node is not None else "",
-                    bounds=item.get("bounds", ""),
+                    bounds=bounds,
                 )
                 tracks.append(track)
                 index += 1
