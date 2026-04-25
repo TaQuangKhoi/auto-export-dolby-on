@@ -1,14 +1,19 @@
 import time
-from datetime import datetime
 from typing import Optional
 
 import typer
 
-from domain.exceptions import AdbNotFoundError, ElementNotFoundError, ExportError, DeleteError
+from domain.exceptions import AdbNotFoundError
+from domain.interfaces import IAdbClient, IDolbyApp, IUiAutomator, ICoordinates
 from infrastructure.adb import AdbClient
 from infrastructure.ui import UiAutomator, DolbyAppHelper, Coordinates
-from infrastructure.reporting import ReportGenerator
-from application.use_cases import ExportTrackUseCase, DeleteTrackUseCase, ProcessAllTracksUseCase
+from application.use_cases import (
+    ExportTrackUseCase,
+    DeleteTrackUseCase,
+    ProcessAllTracksUseCase,
+    ListTracksUseCase,
+    GetDeviceStatusUseCase,
+)
 
 
 CONFIG = {
@@ -50,50 +55,54 @@ app = typer.Typer(help="Dolby On automation CLI — export & delete tracks via A
 
 
 class AppContext:
-    def __init__(self, device_serial: Optional[str] = None, verbose: bool = False, dry_run: bool = False):
-        self.device_serial = device_serial
-        self.verbose = verbose
-        self.dry_run = dry_run
-        self.adb_client: Optional[AdbClient] = None
-        self.ui_automator: Optional[UiAutomator] = None
-        self.dolby_app: Optional[DolbyAppHelper] = None
-        self.coords: Optional[Coordinates] = None
-        self.initialized = False
+    def __init__(self):
+        self._adb_client: Optional[AdbClient] = None
+        self._ui_automator: Optional[UiAutomator] = None
+        self._dolby_app: Optional[DolbyAppHelper] = None
+        self._coords: Optional[Coordinates] = None
+        self._initialized = False
 
     def ensure(self) -> None:
-        if self.initialized:
+        if self._initialized:
             return
-        self.adb_client = AdbClient(CONFIG)
-        try:
-            if not self.adb_client.find_adb():
-                raise AdbNotFoundError(self.adb_client._not_found_message())
-        except AdbNotFoundError as e:
-            typer.echo(f"[ERROR] {e}", err=True)
-            raise typer.Exit(1)
-        self.ui_automator = UiAutomator(self.adb_client, CONFIG)
-        self.dolby_app = DolbyAppHelper(CONFIG)
-        self.coords = Coordinates()
-        self.initialized = True
+        self._adb_client = AdbClient(CONFIG)
+        if not self._adb_client.find_adb():
+            raise AdbNotFoundError(self._adb_client._not_found_message())
+        self._ui_automator = UiAutomator(self._adb_client, CONFIG)
+        self._dolby_app = DolbyAppHelper(CONFIG)
+        self._coords = Coordinates()
+        self._initialized = True
+
+    @property
+    def adb(self) -> IAdbClient:
+        self.ensure()
+        return self._adb_client
+
+    @property
+    def ui(self) -> IUiAutomator:
+        self.ensure()
+        return self._ui_automator
+
+    @property
+    def dolby(self) -> IDolbyApp:
+        self.ensure()
+        return self._dolby_app
+
+    @property
+    def coords(self) -> ICoordinates:
+        self.ensure()
+        return self._coords
 
 
 ctx = AppContext()
 
 
-def _make_export_use_case():
-    return ExportTrackUseCase(ctx.adb_client, ctx.ui_automator, ctx.dolby_app, ctx.coords, CONFIG)
-
-
-def _make_delete_use_case():
-    return DeleteTrackUseCase(ctx.adb_client, ctx.dolby_app, ctx.coords, CONFIG)
-
-
-def _require_dolby_foreground():
-    pkg = ctx.adb_client.get_foreground_package()
-    target = CONFIG["DolbyApp"]["Package"]
-    if pkg != target:
+def _require_dolby_foreground() -> None:
+    status = GetDeviceStatusUseCase(ctx.adb, CONFIG).execute()
+    if not status["is_dolby_foreground"]:
         typer.secho(
-            f"Dolby On ({target}) is not in the foreground.\n"
-            f"Current foreground app: {pkg or 'unknown'}\n"
+            f"Dolby On ({status['dolby_app_package']}) is not in the foreground.\n"
+            f"Current foreground app: {status['foreground_package'] or 'unknown'}\n"
             "Open the Dolby On app on your device and try again.",
             fg=typer.colors.RED, err=True
         )
@@ -104,53 +113,34 @@ def _require_dolby_foreground():
 def status():
     """Check ADB connection and device status."""
     ctx.ensure()
-    _require_dolby_foreground()
-    adb_path = ctx.adb_client.adb_path
-    typer.secho(f"ADB path: {adb_path}", fg=typer.colors.GREEN)
-    typer.secho(f"Foreground app: {ctx.adb_client.get_foreground_package()}", fg=typer.colors.GREEN)
+    status_use_case = GetDeviceStatusUseCase(ctx.adb, CONFIG)
+    result = status_use_case.execute()
+    typer.secho(f"ADB path: {result['adb_path']}", fg=typer.colors.GREEN)
+    typer.secho(f"Foreground app: {result['foreground_package']}", fg=typer.colors.GREEN)
+    if result["is_dolby_foreground"]:
+        typer.secho("Dolby On is in the foreground.", fg=typer.colors.GREEN)
+    else:
+        typer.secho("Dolby On is NOT in the foreground.", fg=typer.colors.YELLOW)
 
 
 @app.command()
 def list(
     all: bool = typer.Option(False, "--all", help="Scroll through all pages to list every track"),
+    save_xml: Optional[str] = typer.Option(None, "--save-xml", help="Save raw UI XML dump to a file for debugging"),
 ):
     """List all tracks in the Dolby On library."""
     ctx.ensure()
     _require_dolby_foreground()
 
-    all_tracks = []
-    scroll_count = 0
+    list_use_case = ListTracksUseCase(ctx.adb, ctx.dolby, ctx.ui, CONFIG)
+    result = list_use_case.execute(scroll_all=all, save_xml_path=save_xml)
 
-    while True:
-        try:
-            xml = ctx.adb_client.dump_ui()
-        except Exception as e:
-            typer.secho(f"Failed to dump UI: {e}", fg=typer.colors.RED, err=True)
-            raise typer.Exit(1)
-
-        page_tracks = ctx.dolby_app.get_track_list(xml, start_index=len(all_tracks) + 1)
-        if not page_tracks:
-            break
-
-        all_tracks.extend(page_tracks)
-        scroll_count += 1
-
-        if not all:
-            break
-
-        if not ctx.dolby_app.has_more_items_below(xml):
-            break
-
-        typer.echo(f"  Page {scroll_count}... scrolling for more...", nl=True)
-        ctx.ui_automator.scroll_down()
-        time.sleep(1)
-
-    if not all_tracks:
+    if not result.tracks:
         typer.secho("No tracks found in library.", fg=typer.colors.YELLOW)
         return
 
-    typer.echo(f"\nFound {len(all_tracks)} track(s):\n")
-    for t in all_tracks:
+    typer.echo(f"\nFound {len(result.tracks)} track(s):\n")
+    for t in result.tracks:
         typer.echo(f"  [{t.index:2}] {t.title}  ({t.duration})  {t.date}")
 
 
@@ -161,7 +151,7 @@ def dump():
     _require_dolby_foreground()
     typer.echo("Dumping UI...", nl=False)
     try:
-        xml = ctx.adb_client.dump_ui()
+        xml = ctx.adb.dump_ui()
         typer.secho(" OK", fg=typer.colors.GREEN)
         typer.echo(xml)
     except Exception as e:
@@ -183,37 +173,31 @@ def export(
         typer.secho("Specify --index <N> or --all", fg=typer.colors.YELLOW, err=True)
         raise typer.Exit(1)
 
-    typer.echo("Dumping library UI...")
-    try:
-        xml = ctx.adb_client.dump_ui()
-    except Exception as e:
-        typer.secho(f"Failed to dump UI: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1)
-
-    tracks = ctx.dolby_app.get_track_list(xml)
-    if not tracks:
+    list_use_case = ListTracksUseCase(ctx.adb, ctx.dolby, ctx.ui, CONFIG)
+    result = list_use_case.execute(scroll_all=False)
+    if not result.tracks:
         typer.secho("No tracks found.", fg=typer.colors.YELLOW)
         raise typer.Exit(1)
 
-    export_use_case = _make_export_use_case()
-    delete_use_case = _make_delete_use_case()
+    export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG)
+    delete_use_case = DeleteTrackUseCase(ctx.adb, ctx.dolby, ctx.coords, CONFIG)
 
-    targets = [tracks[index - 1]] if index else tracks
+    targets = [result.tracks[index - 1]] if index else result.tracks
 
     for track in targets:
         typer.echo(f"\nExporting: {track.title}...")
-        result = export_use_case.execute(track)
-        if result.is_success:
+        exp_result = export_use_case.execute(track)
+        if exp_result.is_success:
             typer.secho(f"  [OK] Exported: {track.title}", fg=typer.colors.GREEN)
             if delete_after:
-                typer.echo(f"  Deleting after export...")
+                typer.echo("  Deleting after export...")
                 del_result = delete_use_case.execute(track)
                 if del_result.is_success:
                     typer.secho(f"  [OK] Deleted: {track.title}", fg=typer.colors.GREEN)
                 else:
                     typer.secho(f"  [WARN] Delete failed: {del_result.error}", fg=typer.colors.YELLOW)
         else:
-            typer.secho(f"  [FAIL] {result.error}", fg=typer.colors.RED, err=True)
+            typer.secho(f"  [FAIL] {exp_result.error}", fg=typer.colors.RED, err=True)
 
 
 @app.command()
@@ -225,23 +209,17 @@ def delete(
     ctx.ensure()
     _require_dolby_foreground()
 
-    typer.echo("Dumping library UI...")
-    try:
-        xml = ctx.adb_client.dump_ui()
-    except Exception as e:
-        typer.secho(f"Failed to dump UI: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1)
-
-    tracks = ctx.dolby_app.get_track_list(xml)
-    if not tracks:
+    list_use_case = ListTracksUseCase(ctx.adb, ctx.dolby, ctx.ui, CONFIG)
+    result = list_use_case.execute(scroll_all=False)
+    if not result.tracks:
         typer.secho("No tracks found.", fg=typer.colors.YELLOW)
         raise typer.Exit(1)
 
-    if index < 1 or index > len(tracks):
-        typer.secho(f"Track index out of range (1-{len(tracks)})", fg=typer.colors.RED, err=True)
+    if index < 1 or index > len(result.tracks):
+        typer.secho(f"Track index out of range (1-{len(result.tracks)})", fg=typer.colors.RED, err=True)
         raise typer.Exit(1)
 
-    track = tracks[index - 1]
+    track = result.tracks[index - 1]
 
     if not force:
         confirmed = typer.confirm(f"Delete track: {track.title}?")
@@ -249,13 +227,13 @@ def delete(
             typer.echo("Aborted.")
             raise typer.Exit(0)
 
-    delete_use_case = _make_delete_use_case()
-    result = delete_use_case.execute(track)
+    delete_use_case = DeleteTrackUseCase(ctx.adb, ctx.dolby, ctx.coords, CONFIG)
+    del_result = delete_use_case.execute(track)
 
-    if result.is_success:
+    if del_result.is_success:
         typer.secho(f"[OK] Deleted: {track.title}", fg=typer.colors.GREEN)
     else:
-        typer.secho(f"[FAIL] {result.error}", fg=typer.colors.RED, err=True)
+        typer.secho(f"[FAIL] {del_result.error}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1)
 
 
@@ -267,23 +245,18 @@ def export_all(
     ctx.ensure()
     _require_dolby_foreground()
 
-    typer.echo("Dumping library UI...")
-    try:
-        xml = ctx.adb_client.dump_ui()
-    except Exception as e:
-        typer.secho(f"Failed to dump UI: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1)
-
-    tracks = ctx.dolby_app.get_track_list(xml)
-    if not tracks:
+    list_use_case = ListTracksUseCase(ctx.adb, ctx.dolby, ctx.ui, CONFIG)
+    result = list_use_case.execute(scroll_all=True)
+    if not result.tracks:
         typer.secho("No tracks found.", fg=typer.colors.YELLOW)
         raise typer.Exit(1)
 
-    typer.echo(f"Found {len(tracks)} track(s). Starting export...\n")
+    typer.echo(f"Found {len(result.tracks)} track(s). Starting export...\n")
 
-    export_use_case = _make_export_use_case()
-    delete_use_case = _make_delete_use_case()
+    export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG)
+    delete_use_case = DeleteTrackUseCase(ctx.adb, ctx.dolby, ctx.coords, CONFIG)
 
+    tracks = list(result.tracks)
     processed = succeeded = failed = 0
     failed_tracks = []
 
@@ -291,21 +264,21 @@ def export_all(
         current = tracks[0]
         processed += 1
 
-        typer.echo(f"[{processed}/{len(tracks)+processed-1}] {current.title}...", nl=False)
+        typer.echo(f"[{processed}/{len(result.tracks)}] {current.title}...", nl=False)
 
-        export_result = export_use_case.execute(current)
-        if not export_result.is_success:
+        exp_result = export_use_case.execute(current)
+        if not exp_result.is_success:
             failed += 1
-            failed_tracks.append({"title": current.title, "reason": f"Export: {export_result.error}"})
+            failed_tracks.append({"title": current.title, "reason": f"Export: {exp_result.error}"})
             typer.secho(f" FAIL", fg=typer.colors.RED)
             _rescan(tracks)
             continue
 
         if delete_after:
-            delete_result = delete_use_case.execute(current)
-            if not delete_result.is_success:
+            del_result = delete_use_case.execute(current)
+            if not del_result.is_success:
                 failed += 1
-                failed_tracks.append({"title": current.title, "reason": f"Delete: {delete_result.error}"})
+                failed_tracks.append({"title": current.title, "reason": f"Delete: {del_result.error}"})
                 typer.secho(f" OK but DELETE FAIL", fg=typer.colors.YELLOW)
                 _rescan(tracks)
                 continue
@@ -324,11 +297,13 @@ def export_all(
         for ft in failed_tracks:
             typer.echo(f"  - {ft['title']}: {ft['reason']}")
 
+    typer.secho(f"\nRemaining tracks in library: {len(tracks)}", fg=typer.colors.CYAN)
+
 
 def _rescan(tracks: list) -> None:
     time.sleep(2)
-    xml = ctx.adb_client.dump_ui()
-    updated = ctx.dolby_app.get_track_list(xml)
+    xml = ctx.adb.dump_ui()
+    updated = ctx.dolby.get_track_list(xml)
     tracks.clear()
     tracks.extend(updated)
 
