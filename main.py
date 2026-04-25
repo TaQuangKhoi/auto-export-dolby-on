@@ -111,22 +111,46 @@ def status():
 
 
 @app.command()
-def list():
+def list(
+    all: bool = typer.Option(False, "--all", help="Scroll through all pages to list every track"),
+):
     """List all tracks in the Dolby On library."""
     ctx.ensure()
     _require_dolby_foreground()
-    typer.echo("Dumping library UI...")
-    try:
-        xml = ctx.adb_client.dump_ui()
-    except Exception as e:
-        typer.secho(f"Failed to dump UI: {e}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1)
-    tracks = ctx.dolby_app.get_track_list(xml)
-    if not tracks:
+
+    all_tracks = []
+    scroll_count = 0
+
+    while True:
+        try:
+            xml = ctx.adb_client.dump_ui()
+        except Exception as e:
+            typer.secho(f"Failed to dump UI: {e}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1)
+
+        page_tracks = ctx.dolby_app.get_track_list(xml, start_index=len(all_tracks) + 1)
+        if not page_tracks:
+            break
+
+        all_tracks.extend(page_tracks)
+        scroll_count += 1
+
+        if not all:
+            break
+
+        if not ctx.dolby_app.has_more_items_below(xml):
+            break
+
+        typer.echo(f"  Page {scroll_count}... scrolling for more...", nl=True)
+        ctx.ui_automator.scroll_down()
+        time.sleep(1)
+
+    if not all_tracks:
         typer.secho("No tracks found in library.", fg=typer.colors.YELLOW)
         return
-    typer.echo(f"\nFound {len(tracks)} track(s):\n")
-    for t in tracks:
+
+    typer.echo(f"\nFound {len(all_tracks)} track(s):\n")
+    for t in all_tracks:
         typer.echo(f"  [{t.index:2}] {t.title}  ({t.duration})  {t.date}")
 
 
