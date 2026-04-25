@@ -7,7 +7,7 @@ class DolbyAppHelper:
     def __init__(self, config: dict):
         self._config = config
 
-    def get_track_list(self, xml_string: str) -> list[Track]:
+    def get_track_list(self, xml_string: str, start_index: int = 1) -> list[Track]:
         if not xml_string:
             return []
         try:
@@ -20,15 +20,13 @@ class DolbyAppHelper:
             date_id = res_ids.get("Date", "")
             time_id = res_ids.get("Time", "")
 
-            ns = {"n": "http://schemas.android.com/res/android"}
             recycler = root.find(f".//node[@resource-id='{recycler_id}']")
             if recycler is None:
                 return []
 
             tracks = []
-            index = 0
+            index = start_index
             for item in recycler.findall(f".//node[@resource-id='{track_item_id}']"):
-                index += 1
                 title_node = item.find(f".//node[@resource-id='{title_id}']")
                 date_node = item.find(f".//node[@resource-id='{date_id}']")
                 time_node = item.find(f".//node[@resource-id='{time_id}']")
@@ -41,9 +39,47 @@ class DolbyAppHelper:
                     bounds=item.get("bounds", ""),
                 )
                 tracks.append(track)
+                index += 1
             return tracks
         except ET.ParseError:
             return []
+
+    def has_more_items_below(self, xml_string: str) -> bool:
+        if not xml_string:
+            return False
+        try:
+            root = ET.fromstring(xml_string)
+            dolby_cfg = self._config.get("DolbyApp", {})
+            res_ids = dolby_cfg.get("ResourceIds", {})
+            recycler_id = res_ids.get("RecyclerView", "")
+            recycler = root.find(f".//node[@resource-id='{recycler_id}']")
+            if recycler is None:
+                return False
+
+            bounds = recycler.get("bounds", "")
+            if not bounds:
+                return False
+
+            match = re.search(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds)
+            if not match:
+                return False
+
+            recycler_bottom = int(match.group(4))
+
+            last_item = recycler.findall(f".//node[@resource-id='{res_ids.get('TrackItem', '')}']")[-1:]
+            if not last_item:
+                return False
+
+            item_bounds = last_item[0].get("bounds", "")
+            item_match = re.search(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', item_bounds)
+            if not item_match:
+                return False
+
+            last_item_bottom = int(item_match.group(4))
+            return last_item_bottom < recycler_bottom - 50
+
+        except Exception:
+            return False
 
     def find_element(self, xml_string: str, resource_id: str = None, text: str = None, content_desc: str = None) -> dict | None:
         if not xml_string:
