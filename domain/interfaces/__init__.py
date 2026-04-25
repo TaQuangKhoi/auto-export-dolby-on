@@ -12,7 +12,15 @@ class IAdbClient(Protocol):
         ...
 
     @abstractmethod
+    def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 800) -> None:
+        ...
+
+    @abstractmethod
     def dump_ui(self) -> str:
+        ...
+
+    @abstractmethod
+    def get_foreground_package(self) -> str | None:
         ...
 
 
@@ -25,6 +33,14 @@ class IUiAutomator(Protocol):
     def wait_for_export_completion(self, max_wait: int = 300) -> str | None:
         ...
 
+    @abstractmethod
+    def scroll_down(self, duration_ms: int = 800) -> None:
+        ...
+
+    @abstractmethod
+    def scroll_up(self, duration_ms: int = 800) -> None:
+        ...
+
 
 class ICoordinates(Protocol):
     @abstractmethod
@@ -34,7 +50,11 @@ class ICoordinates(Protocol):
 
 class IDolbyApp(Protocol):
     @abstractmethod
-    def get_track_list(self, xml_string: str) -> list:
+    def get_track_list(self, xml_string: str, start_index: int = 1) -> list:
+        ...
+
+    @abstractmethod
+    def has_more_items_below(self, xml_string: str) -> bool:
         ...
 
     @abstractmethod
