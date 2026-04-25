@@ -50,7 +50,7 @@ class ICoordinates(Protocol):
 
 class IDolbyApp(Protocol):
     @abstractmethod
-    def get_track_list(self, xml_string: str, start_index: int = 1) -> list:
+    def get_track_list(self, xml_string: str, start_index: int = 1, seen_bounds: set[str] | None = None) -> list:
         ...
 
     @abstractmethod
