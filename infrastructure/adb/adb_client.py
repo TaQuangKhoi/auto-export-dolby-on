@@ -68,14 +68,30 @@ class AdbClient:
         return (result.stdout + result.stderr).strip()
 
     def get_foreground_package(self) -> str | None:
-        output = self._run_shell(["dumpsys", "window", "windows"])
+        output = self._run_shell(["dumpsys", "window"])
         import re
-        match = re.search(r'mCurrentFocus[^}]*\{[^}]*\s+(?P<package>[^\s/]+)', output)
+
+        # Modern Android: "mCurrentFocus=Window{... u0 com.package/.Activity}"
+        match = re.search(r'mCurrentFocus=Window\{[^}]*\s+([^\s/]+)', output)
         if match:
-            return match.group("package")
-        match = re.search(r'mCurrentFocus=.*?\((?P<package>[^\s/]+)', output)
+            return match.group(1)
+
+        # Alternative: "mFocusedApp=AppWindowToken{... ActivityRecord{... com.package/...}}"
+        match = re.search(r'mFocusedApp=[^}]*\s([a-zA-Z0-9._]+)/', output)
         if match:
-            return match.group("package")
+            return match.group(1)
+
+        # Fallback: older format "mCurrentFocus=... (com.package)"
+        match = re.search(r'mCurrentFocus=[^(]*\(([^\s/]+)', output)
+        if match:
+            return match.group(1)
+
+        # Last resort: dumpsys activity recents
+        recents = self._run_shell(["dumpsys", "activity", "recents"])
+        match = re.search(r'Recent #0:\s+Task\{[^}]*\s+([^\s/]+)', recents)
+        if match:
+            return match.group(1)
+
         return None
 
     def dump_ui(self) -> str:

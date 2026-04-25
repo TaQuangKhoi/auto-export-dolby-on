@@ -87,20 +87,34 @@ def _make_delete_use_case():
     return DeleteTrackUseCase(ctx.adb_client, ctx.dolby_app, ctx.coords, CONFIG)
 
 
+def _require_dolby_foreground():
+    pkg = ctx.adb_client.get_foreground_package()
+    target = CONFIG["DolbyApp"]["Package"]
+    if pkg != target:
+        typer.secho(
+            f"Dolby On ({target}) is not in the foreground.\n"
+            f"Current foreground app: {pkg or 'unknown'}\n"
+            "Open the Dolby On app on your device and try again.",
+            fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(1)
+
+
 @app.command()
 def status():
     """Check ADB connection and device status."""
     ctx.ensure()
+    _require_dolby_foreground()
     adb_path = ctx.adb_client.adb_path
     typer.secho(f"ADB path: {adb_path}", fg=typer.colors.GREEN)
-    typer.echo("Checking device connection...")
-    typer.echo("(Device listing not implemented — ADB binary found)")
+    typer.secho(f"Foreground app: {ctx.adb_client.get_foreground_package()}", fg=typer.colors.GREEN)
 
 
 @app.command()
 def list():
     """List all tracks in the Dolby On library."""
     ctx.ensure()
+    _require_dolby_foreground()
     typer.echo("Dumping library UI...")
     try:
         xml = ctx.adb_client.dump_ui()
@@ -120,6 +134,7 @@ def list():
 def dump():
     """Dump raw UI XML to stdout for debugging."""
     ctx.ensure()
+    _require_dolby_foreground()
     typer.echo("Dumping UI...", nl=False)
     try:
         xml = ctx.adb_client.dump_ui()
@@ -138,6 +153,7 @@ def export(
 ):
     """Export tracks to Google Drive."""
     ctx.ensure()
+    _require_dolby_foreground()
 
     if not index and not all:
         typer.secho("Specify --index <N> or --all", fg=typer.colors.YELLOW, err=True)
@@ -183,6 +199,7 @@ def delete(
 ):
     """Delete a track from the Dolby On library."""
     ctx.ensure()
+    _require_dolby_foreground()
 
     typer.echo("Dumping library UI...")
     try:
@@ -224,6 +241,7 @@ def export_all(
 ):
     """Export all tracks and show summary."""
     ctx.ensure()
+    _require_dolby_foreground()
 
     typer.echo("Dumping library UI...")
     try:
