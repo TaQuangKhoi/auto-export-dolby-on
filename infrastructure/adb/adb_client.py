@@ -60,6 +60,24 @@ class AdbClient:
     def tap_at(self, x: int, y: int) -> None:
         self._run([self.adb_path, "shell", "input", "tap", str(x), str(y)])
 
+    def _run_shell(self, args: list[str]) -> str:
+        result = subprocess.run(
+            [self.adb_path, "shell"] + args,
+            capture_output=True, text=True
+        )
+        return (result.stdout + result.stderr).strip()
+
+    def get_foreground_package(self) -> str | None:
+        output = self._run_shell(["dumpsys", "window", "windows"])
+        import re
+        match = re.search(r'mCurrentFocus[^}]*\{[^}]*\s+(?P<package>[^\s/]+)', output)
+        if match:
+            return match.group("package")
+        match = re.search(r'mCurrentFocus=.*?\((?P<package>[^\s/]+)', output)
+        if match:
+            return match.group("package")
+        return None
+
     def dump_ui(self) -> str:
         result = subprocess.run(
             [self.adb_path, "exec-out", "uiautomator", "dump", "/dev/tty"],
