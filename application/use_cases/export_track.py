@@ -108,9 +108,7 @@ class ExportTrackUseCase:
         return ExportResult(success=True, step="Export", track_title=track.title)
 
     def _log(self, msg: str) -> None:
-        import sys
-        sys.stdout.write(f"\033[90m{msg}\033[0m\n")
-        sys.stdout.flush()
+        print(f"\033[90m{msg}\033[0m")
 
     def _sleep(self, seconds: float) -> None:
         import time
