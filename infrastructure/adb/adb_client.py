@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import shlex
 import sys
+import time
 from pathlib import Path
 
 from domain.exceptions import AdbNotFoundError, AdbCommandError
@@ -100,31 +101,38 @@ class AdbClient:
 
         return None
 
-    def dump_ui(self) -> str:
-        result = subprocess.run(
-            [self.adb_path, "exec-out", "uiautomator", "dump", "/dev/tty"],
-            capture_output=True, text=True
-        )
-        output = result.stdout + result.stderr
+    def dump_ui(self, retries: int = 3, retry_delay: float = 1.5) -> str:
         import re
-        match = re.search(r'(<\?xml.*?<hierarchy.*?</hierarchy>|'
-                          r'<hierarchy.*?</hierarchy>)', output, re.DOTALL)
-        if match:
-            return match.group(1)
+        last_err = ""
+        for attempt in range(retries):
+            result = subprocess.run(
+                [self.adb_path, "exec-out", "uiautomator", "dump", "/dev/tty"],
+                capture_output=True, text=True
+            )
+            output = result.stdout + result.stderr
+            match = re.search(r'(<\?xml.*?<hierarchy.*?</hierarchy>|'
+                              r'<hierarchy.*?</hierarchy>)', output, re.DOTALL)
+            if match:
+                return match.group(1)
 
-        err = output.strip()
-        if "no devices/emulators found" in err.lower():
-            raise AdbCommandError(
-                "No Android device connected. Plug in your device, enable USB debugging, "
-                "and run 'adb devices' to verify it shows up."
-            )
-        if "device unauthorized" in err.lower():
-            raise AdbCommandError(
-                "Device unauthorized. Check the authorization prompt on your device "
-                "and run 'adb devices' to verify."
-            )
-        if "device offline" in err.lower():
-            raise AdbCommandError(
-                "Device is offline. Reconnect your device and try again."
-            )
-        raise AdbCommandError(f"Could not parse UI dump: {err[:200]}")
+            last_err = output.strip()
+            # Fatal errors — no point retrying
+            if "no devices/emulators found" in last_err.lower():
+                raise AdbCommandError(
+                    "No Android device connected. Plug in your device, enable USB debugging, "
+                    "and run 'adb devices' to verify it shows up."
+                )
+            if "device unauthorized" in last_err.lower():
+                raise AdbCommandError(
+                    "Device unauthorized. Check the authorization prompt on your device "
+                    "and run 'adb devices' to verify."
+                )
+            if "device offline" in last_err.lower():
+                raise AdbCommandError(
+                    "Device is offline. Reconnect your device and try again."
+                )
+            # Transient errors (idle state, busy) — retry
+            if attempt < retries - 1:
+                time.sleep(retry_delay)
+
+        raise AdbCommandError(f"Could not parse UI dump after {retries} attempts: {last_err[:200]}")
