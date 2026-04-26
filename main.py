@@ -199,7 +199,7 @@ def export(
         typer.secho("No tracks found.", fg=typer.colors.YELLOW)
         raise typer.Exit(1)
 
-    export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG, rom=rom)
+    export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG, rom=rom, delete_after=delete_after)
     delete_use_case = DeleteTrackUseCase(ctx.adb, ctx.dolby, ctx.coords, CONFIG)
 
     targets = [result.tracks[index - 1]] if index else result.tracks
@@ -278,7 +278,7 @@ def export_all(
     console.print(Panel("[bold cyan]Dolby On Export All[/bold cyan]", expand=False))
     console.print(f"[dim]Found [cyan]{len(result.tracks)}[/cyan] track(s)[/dim]\n")
 
-    export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG, rom=rom)
+    export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG, rom=rom, delete_after=delete_after)
     delete_use_case = DeleteTrackUseCase(ctx.adb, ctx.dolby, ctx.coords, CONFIG)
 
     tracks = list(result.tracks)

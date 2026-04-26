@@ -12,6 +12,7 @@ class ExportTrackUseCase:
         coordinates,
         config: dict,
         rom: str | None = None,
+        delete_after: bool = False,
     ):
         self._adb = adb_client
         self._ui = ui_automator
@@ -19,6 +20,7 @@ class ExportTrackUseCase:
         self._coords = coordinates
         self._config = config
         self._rom = rom
+        self._delete_after = delete_after
 
     def execute(self, track: Track) -> ExportResult:
         try:
@@ -79,11 +81,29 @@ class ExportTrackUseCase:
         if not success:
             raise ExportError("Save dialog handling failed")
 
-        self._sleep(self._config["WaitTimes"]["ReturnToDetail"])
+        if self._delete_after:
+            self._log("[7/8] Delete-after enabled — looking for More button")
+            self._sleep(self._config["WaitTimes"]["ReturnToDetail"])
+            xml = self._adb.dump_ui()
+            more_btn = self._app.find_element(xml, resource_id=res_ids["MoreButton"])
+            if not more_btn:
+                raise ElementNotFoundError("More button not found after export")
+            center = self._coords.bounds_to_center(more_btn["bounds"])
+            self._adb.tap_at(*center)
+            self._log("[7/8] Tapped More button — looking for Delete")
+            self._sleep(self._config["WaitTimes"]["PopupAppear"])
+            xml = self._adb.dump_ui()
+            delete_btn = self._app.find_element(xml, resource_id=res_ids["DeleteButton"])
+            if not delete_btn:
+                raise ElementNotFoundError("Delete button not found")
+            center = self._coords.bounds_to_center(delete_btn["bounds"])
+            self._adb.tap_at(*center)
+            self._log("[8/8] Tapped Delete")
 
+        self._sleep(self._config["WaitTimes"]["ReturnToDetail"])
         self._adb.press_back()
         self._sleep(1)
-        self._log("[OK] Export complete — returned to list")
+        self._log("[OK] Export complete")
 
         return ExportResult(success=True, step="Export", track_title=track.title)
 
