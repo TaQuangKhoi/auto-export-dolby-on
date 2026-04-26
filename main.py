@@ -160,10 +160,13 @@ def list(
 
 
 @app.command()
-def dump():
+def dump(
+    force: bool = typer.Option(False, "--force", "-f", help="Dump UI even if Dolby On is not in foreground"),
+):
     """Dump raw UI XML to stdout for debugging."""
     ctx.ensure()
-    _require_dolby_foreground()
+    if not force:
+        _require_dolby_foreground()
     typer.echo("Dumping UI...", nl=False)
     try:
         xml = ctx.adb.dump_ui()

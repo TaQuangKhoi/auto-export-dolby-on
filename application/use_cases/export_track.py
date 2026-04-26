@@ -1,5 +1,6 @@
 from domain.entities import Track, ExportResult
 from domain.exceptions import ElementNotFoundError, ExportError
+from infrastructure.save_dialog import SaveDialogDetector
 
 
 class ExportTrackUseCase:
@@ -64,40 +65,12 @@ class ExportTrackUseCase:
 
         center = self._coords.bounds_to_center(export_btn["bounds"])
         self._adb.tap_at(*center)
-        self._log("[6/8] Tapped Export Lossless — waiting for save dialog")
+        self._log("[6/8] Tapped Export Lossless — detecting save dialog type")
 
-        save_dialog_xml = self._ui.wait_for_export_completion(
-            max_wait=self._config["WaitTimes"]["ExportMaxWait"]
-        )
-        if not save_dialog_xml:
-            raise ExportError("Export timed out — Save Dialog did not appear")
-
-        self._log("[7/8] Save dialog appeared — looking for Drive button")
-        drive_btn = self._app.find_element(save_dialog_xml, text="Drive")
-        if not drive_btn:
-            drive_btn = self._app.find_element(save_dialog_xml, content_desc="Drive")
-        if not drive_btn:
-            raise ElementNotFoundError("Drive button not found")
-
-        center = self._coords.bounds_to_center(drive_btn["bounds"])
-        self._adb.tap_at(*center)
-        self._log("[7/8] Tapped Drive — waiting for save screen")
-
-        self._sleep(3)
-
-        drive_screen_xml = self._adb.dump_ui()
-        self._log("[8/8] Looking for Save button in Drive")
-        save_btn = self._app.find_element(
-            drive_screen_xml, resource_id="com.google.android.apps.docs:id/save_button"
-        )
-        if not save_btn:
-            save_btn = self._app.find_element(drive_screen_xml, text="Save")
-        if not save_btn:
-            raise ElementNotFoundError("Save button not found")
-
-        center = self._coords.bounds_to_center(save_btn["bounds"])
-        self._adb.tap_at(*center)
-        self._log("[8/8] Tapped Save — waiting to return")
+        detector = SaveDialogDetector(self._adb, self._ui, self._app, self._coords, self._config)
+        success = detector.detect_and_handle()
+        if not success:
+            raise ExportError("Save dialog handling failed")
 
         self._sleep(self._config["WaitTimes"]["ReturnToDetail"])
 

@@ -74,7 +74,10 @@ class UiAutomator:
         return bool(
             re.search(r'com\.android\.documentsui', xml) or
             re.search(r'text="Save"|content-desc="Save"', xml) or
-            re.search(r'text="Drive"|content-desc="Drive"', xml)
+            re.search(r'text="Drive"|content-desc="Drive"', xml) or
+            re.search(r'JUST ONCE|ALWAYS', xml) or
+            re.search(r'text="Save file"', xml) or
+            re.search(r'com\.android\.internal:id/button', xml)
         )
 
     def scroll_down(self, duration_ms: int = 800) -> None:
