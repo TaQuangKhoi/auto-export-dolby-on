@@ -211,13 +211,6 @@ def export(
         exp_result = export_use_case.execute(track)
         if exp_result.is_success:
             console.print(" [green]OK[/green]")
-            if delete_after:
-                console.print("  [dim]Deleting...[/dim]", end="")
-                del_result = delete_use_case.execute(track)
-                if del_result.is_success:
-                    console.print(" [green]DELETED[/green]")
-                else:
-                    console.print(f" [yellow]DELETE FAIL: {del_result.error}[/yellow]")
         else:
             console.print(f" [red]FAIL: {exp_result.error}[/red]")
 
