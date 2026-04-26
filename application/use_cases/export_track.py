@@ -11,12 +11,14 @@ class ExportTrackUseCase:
         dolby_app,
         coordinates,
         config: dict,
+        rom: str | None = None,
     ):
         self._adb = adb_client
         self._ui = ui_automator
         self._app = dolby_app
         self._coords = coordinates
         self._config = config
+        self._rom = rom
 
     def execute(self, track: Track) -> ExportResult:
         try:
@@ -68,6 +70,11 @@ class ExportTrackUseCase:
         self._log("[6/8] Tapped Export Lossless — detecting save dialog type")
 
         detector = SaveDialogDetector(self._adb, self._ui, self._app, self._coords, self._config)
+        if self._rom:
+            detector.set_handler(self._rom)
+            self._log(f"[6/8] Tapped Export Lossless — using forced {self._rom} handler")
+        else:
+            self._log("[6/8] Tapped Export Lossless — detecting save dialog type")
         success = detector.detect_and_handle()
         if not success:
             raise ExportError("Save dialog handling failed")

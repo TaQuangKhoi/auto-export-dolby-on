@@ -182,6 +182,7 @@ def export(
     index: Optional[int] = typer.Option(None, "--index", "-i", help="Export a specific track by index"),
     all: bool = typer.Option(False, "--all", "-a", help="Export all tracks"),
     delete_after: bool = typer.Option(False, "--delete-after", help="Delete track after successful export"),
+    rom: Optional[str] = typer.Option(None, "--rom", help="Force save dialog type: xiaomi or oppo"),
 ):
     """Export tracks to Google Drive."""
     ctx.ensure()
@@ -198,7 +199,7 @@ def export(
         typer.secho("No tracks found.", fg=typer.colors.YELLOW)
         raise typer.Exit(1)
 
-    export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG)
+    export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG, rom=rom)
     delete_use_case = DeleteTrackUseCase(ctx.adb, ctx.dolby, ctx.coords, CONFIG)
 
     targets = [result.tracks[index - 1]] if index else result.tracks
@@ -261,6 +262,7 @@ def delete(
 @app.command()
 def export_all(
     delete_after: bool = typer.Option(False, "--delete-after", help="Delete track after successful export"),
+    rom: Optional[str] = typer.Option(None, "--rom", help="Force save dialog type: xiaomi or oppo"),
 ):
     """Export all tracks and show summary."""
     ctx.ensure()
@@ -276,7 +278,7 @@ def export_all(
     console.print(Panel("[bold cyan]Dolby On Export All[/bold cyan]", expand=False))
     console.print(f"[dim]Found [cyan]{len(result.tracks)}[/cyan] track(s)[/dim]\n")
 
-    export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG)
+    export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG, rom=rom)
     delete_use_case = DeleteTrackUseCase(ctx.adb, ctx.dolby, ctx.coords, CONFIG)
 
     tracks = list(result.tracks)
