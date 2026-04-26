@@ -1,6 +1,7 @@
 from domain.entities import Track, ExportResult
 from domain.exceptions import ElementNotFoundError, ExportError
 from infrastructure.save_dialog import SaveDialogDetector
+from application.use_cases.delete_track import DeleteTrackUseCase
 
 
 class ExportTrackUseCase:
@@ -82,23 +83,21 @@ class ExportTrackUseCase:
             raise ExportError("Save dialog handling failed")
 
         if self._delete_after:
-            self._log("[7/8] Delete-after enabled — looking for More button")
-            self._sleep(self._config["WaitTimes"]["ReturnToDetail"])
-            xml = self._adb.dump_ui()
-            more_btn = self._app.find_element(xml, resource_id=res_ids["MoreButton"])
-            if not more_btn:
-                raise ElementNotFoundError("More button not found after export")
-            center = self._coords.bounds_to_center(more_btn["bounds"])
-            self._adb.tap_at(*center)
-            self._log("[7/8] Tapped More button — looking for Delete")
-            self._sleep(self._config["WaitTimes"]["PopupAppear"])
-            xml = self._adb.dump_ui()
-            delete_btn = self._app.find_element(xml, resource_id=res_ids["DeleteButton"])
-            if not delete_btn:
-                raise ElementNotFoundError("Delete button not found")
-            center = self._coords.bounds_to_center(delete_btn["bounds"])
-            self._adb.tap_at(*center)
-            self._log("[8/8] Tapped Delete")
+            try:
+                self._log("[7/8] Delete-after enabled — deleting track")
+                delete_uc = DeleteTrackUseCase(self._adb, self._app, self._coords, self._config)
+                result = delete_uc.execute(track)
+                if not result.success:
+                    raise ElementNotFoundError(result.error or "Delete failed")
+                self._log("[8/8] Delete OK")
+                return ExportResult(success=True, step="Export+Delete", track_title=track.title)
+            except ElementNotFoundError:
+                self._log("[!] Delete failed — pressing back to recover")
+                self._adb.press_back()
+                self._sleep(1)
+                self._adb.press_back()
+                self._sleep(1)
+                raise
 
         self._sleep(self._config["WaitTimes"]["ReturnToDetail"])
         self._adb.press_back()
