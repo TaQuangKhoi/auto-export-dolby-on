@@ -7,15 +7,14 @@ class OppoSaveDialogHandler(BaseSaveDialogHandler):
             return False
         if self._app.find_element(xml_string, text="Drive"):
             return False
-        oppo_save_indicators = [
-            "com.android.internal:id/button1",
-            "com.android.internal:id/button2",
-            "android:id/button1",
-            "android:id/button2",
-            "JUST ONCE",
-            "ALWAYS",
+        oppo_indicators = [
+            "oplus:id/resolver_pager",
+            "Share via \"Nearby Share\"",
+            "com.oplus.widget.OplusViewPager",
+            "resolver_item_layout",
+            "oplus_resolver_open_scan_icon",
         ]
-        for indicator in oppo_save_indicators:
+        for indicator in oppo_indicators:
             if "id" in indicator:
                 elem = self._app.find_element(xml_string, resource_id=indicator)
                 if elem:
@@ -37,22 +36,51 @@ class OppoSaveDialogHandler(BaseSaveDialogHandler):
         if not save_dialog_xml:
             return False
 
-        save_options = [
-            ("text", "JUST ONCE"),
-            ("text", "ALWAYS"),
-            ("text", "Save file"),
-            ("resource_id", "com.android.internal:id/button1"),
-            ("resource_id", "android:id/button1"),
-            ("resource_id", "com.android.internal:id/button2"),
-            ("resource_id", "android:id/button2"),
-            ("text", "Save"),
+        save_targets = [
+            ("text", "Save to Files"),
+            ("text", "Files by Google"),
+            ("text", "Download"),
         ]
-        for attr, value in save_options:
+        for attr, value in save_targets:
             if attr == "text":
                 if self._tap_element(save_dialog_xml, text=value):
+                    self._sleep(3)
                     return True
             else:
                 if self._tap_element(save_dialog_xml, resource_id=value):
+                    self._sleep(3)
                     return True
 
+        first_item = self._find_first_clickable_item(save_dialog_xml)
+        if first_item:
+            center = self._coords.bounds_to_center(first_item["bounds"])
+            self._adb.tap_at(*center)
+            self._sleep(3)
+            return True
+
         return False
+
+    def _find_first_clickable_item(self, xml_string: str) -> dict | None:
+        import xml.etree.ElementTree as ET
+        try:
+            root = ET.fromstring(xml_string)
+            items = []
+            for node in root.iter("node"):
+                is_clickable = node.get("clickable", "false") == "true"
+                bounds = node.get("bounds", "")
+                is_valid_bounds = bounds and bounds != "[0,0][0,0]"
+                if is_clickable and is_valid_bounds:
+                    rect = self._parse_bounds(bounds)
+                    if rect and rect[2] > 0 and rect[3] > 0:
+                        items.append({"bounds": bounds, "area": (rect[2] - rect[0]) * (rect[3] - rect[1])})
+            items.sort(key=lambda x: x["area"], reverse=True)
+            return items[0] if items else None
+        except Exception:
+            return None
+
+    def _parse_bounds(self, bounds_str: str) -> tuple | None:
+        import re
+        match = re.search(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds_str)
+        if match:
+            return (int(match.group(1)), int(match.group(2)), int(match.group(3)), int(match.group(4)))
+        return None
