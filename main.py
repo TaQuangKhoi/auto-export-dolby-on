@@ -202,17 +202,35 @@ def export(
     export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG, rom=rom, delete_after=delete_after)
     delete_use_case = DeleteTrackUseCase(ctx.adb, ctx.dolby, ctx.coords, CONFIG)
 
-    targets = [result.tracks[index - 1]] if index else result.tracks
-
     console.print(Panel("[bold cyan]Dolby On Export[/bold cyan]", expand=False))
 
-    for i, track in enumerate(targets, 1):
-        console.print(f"[dim][[/dim][cyan]{i}/{len(targets)}[/cyan][dim]][/dim] [bold]{track.title}[/bold]", end="")
+    if index:
+        # Single track — no rescan needed
+        track = result.tracks[index - 1]
+        console.print(f"[dim][[/dim][cyan]1/1[/cyan][dim]][/dim] [bold]{track.title}[/bold]", end="")
         exp_result = export_use_case.execute(track)
         if exp_result.is_success:
             console.print(" [green]OK[/green]")
         else:
             console.print(f" [red]FAIL: {exp_result.error}[/red]")
+    else:
+        # Export all with rescan after each track
+        processed = 0
+        while True:
+            scan = list_use_case.execute(scroll_all=False)
+            if not scan.tracks:
+                break
+            track = scan.tracks[0]
+            processed += 1
+            console.print(f"[dim][[/dim][cyan]{processed}[/cyan][dim]][/dim] [bold]{track.title}[/bold]", end="")
+            exp_result = export_use_case.execute(track)
+            if exp_result.is_success:
+                console.print(" [green]OK[/green]")
+            else:
+                console.print(f" [red]FAIL: {exp_result.error}[/red]")
+                if not delete_after:
+                    # No delete → list won't change → infinite loop risk, skip to next
+                    break
 
 
 @app.command()
