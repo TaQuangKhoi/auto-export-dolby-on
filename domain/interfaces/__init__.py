@@ -16,6 +16,10 @@ class IAdbClient(Protocol):
         ...
 
     @abstractmethod
+    def press_back(self) -> None:
+        ...
+
+    @abstractmethod
     def dump_ui(self) -> str:
         ...
 
@@ -55,6 +59,18 @@ class IDolbyApp(Protocol):
 
     @abstractmethod
     def has_more_items_below(self, xml_string: str) -> bool:
+        ...
+
+    @abstractmethod
+    def is_list_view(self, xml_string: str) -> bool:
+        ...
+
+    @abstractmethod
+    def is_detail_view(self, xml_string: str) -> bool:
+        ...
+
+    @abstractmethod
+    def find_track_item_in_list(self, xml_string: str, track) -> dict | None:
         ...
 
     @abstractmethod

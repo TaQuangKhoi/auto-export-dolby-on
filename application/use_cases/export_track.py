@@ -29,24 +29,42 @@ class ExportTrackUseCase:
 
     def _do_export(self, track: Track) -> ExportResult:
         res_ids = self._config["DolbyApp"]["ResourceIds"]
+        self._log("[1/8] Dump UI")
 
         xml = self._adb.dump_ui()
+
+        if self._app.is_list_view(xml):
+            self._log("[2/8] List view detected — tapping track item")
+            track_item = self._app.find_track_item_in_list(xml, track)
+            if not track_item:
+                raise ElementNotFoundError(f"Track item not found in list: {track.title}")
+            center = self._coords.bounds_to_center(track_item["bounds"])
+            self._adb.tap_at(*center)
+            self._sleep(self._config["WaitTimes"]["ScreenLoad"])
+            xml = self._adb.dump_ui()
+        else:
+            self._log("[2/8] Detail view detected — skip tap")
+
+        self._log("[3/8] Looking for Share button")
         share_btn = self._app.find_element(xml, resource_id=res_ids["ShareButton"])
         if not share_btn:
-            raise ElementNotFoundError("Share button not found")
+            raise ElementNotFoundError("Share button not found — not in detail view")
 
         center = self._coords.bounds_to_center(share_btn["bounds"])
         self._adb.tap_at(*center)
+        self._log("[4/8] Tapped Share button — waiting for popup")
 
         self._sleep(self._config["WaitTimes"]["PopupAppear"])
 
         xml = self._adb.dump_ui()
+        self._log("[5/8] Looking for Export Lossless option")
         export_btn = self._app.find_element(xml, resource_id=res_ids["ExportLossless"])
         if not export_btn:
             raise ElementNotFoundError("Export Lossless button not found")
 
         center = self._coords.bounds_to_center(export_btn["bounds"])
         self._adb.tap_at(*center)
+        self._log("[6/8] Tapped Export Lossless — waiting for save dialog")
 
         save_dialog_xml = self._ui.wait_for_export_completion(
             max_wait=self._config["WaitTimes"]["ExportMaxWait"]
@@ -54,6 +72,7 @@ class ExportTrackUseCase:
         if not save_dialog_xml:
             raise ExportError("Export timed out — Save Dialog did not appear")
 
+        self._log("[7/8] Save dialog appeared — looking for Drive button")
         drive_btn = self._app.find_element(save_dialog_xml, text="Drive")
         if not drive_btn:
             drive_btn = self._app.find_element(save_dialog_xml, content_desc="Drive")
@@ -62,10 +81,12 @@ class ExportTrackUseCase:
 
         center = self._coords.bounds_to_center(drive_btn["bounds"])
         self._adb.tap_at(*center)
+        self._log("[7/8] Tapped Drive — waiting for save screen")
 
         self._sleep(3)
 
         drive_screen_xml = self._adb.dump_ui()
+        self._log("[8/8] Looking for Save button in Drive")
         save_btn = self._app.find_element(
             drive_screen_xml, resource_id="com.google.android.apps.docs:id/save_button"
         )
@@ -76,10 +97,20 @@ class ExportTrackUseCase:
 
         center = self._coords.bounds_to_center(save_btn["bounds"])
         self._adb.tap_at(*center)
+        self._log("[8/8] Tapped Save — waiting to return")
 
         self._sleep(self._config["WaitTimes"]["ReturnToDetail"])
 
+        self._adb.press_back()
+        self._sleep(1)
+        self._log("[OK] Export complete — returned to list")
+
         return ExportResult(success=True, step="Export", track_title=track.title)
+
+    def _log(self, msg: str) -> None:
+        import sys
+        sys.stdout.write(f"\033[90m{msg}\033[0m\n")
+        sys.stdout.flush()
 
     def _sleep(self, seconds: float) -> None:
         import time

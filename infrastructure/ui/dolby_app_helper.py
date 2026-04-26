@@ -115,6 +115,56 @@ class DolbyAppHelper:
         except ET.ParseError:
             return None
 
+    def is_list_view(self, xml_string: str) -> bool:
+        if not xml_string:
+            return False
+        try:
+            root = ET.fromstring(xml_string)
+            res_ids = self._config.get("DolbyApp", {}).get("ResourceIds", {})
+            recycler_id = res_ids.get("RecyclerView", "")
+            track_item_id = res_ids.get("TrackItem", "")
+            recycler = root.find(f".//node[@resource-id='{recycler_id}']")
+            if recycler is None:
+                return False
+            items = recycler.findall(f".//node[@resource-id='{track_item_id}']")
+            return len(items) > 0
+        except Exception:
+            return False
+
+    def is_detail_view(self, xml_string: str) -> bool:
+        if not xml_string:
+            return False
+        try:
+            root = ET.fromstring(xml_string)
+            res_ids = self._config.get("DolbyApp", {}).get("ResourceIds", {})
+            share_btn_id = res_ids.get("ShareButton", "")
+            for node in root.iter("node"):
+                if node.get("resource-id") == share_btn_id:
+                    return True
+            return False
+        except Exception:
+            return False
+
+    def find_track_item_in_list(self, xml_string: str, track: Track) -> dict | None:
+        if not xml_string:
+            return None
+        try:
+            root = ET.fromstring(xml_string)
+            res_ids = self._config.get("DolbyApp", {}).get("ResourceIds", {})
+            track_item_id = res_ids.get("TrackItem", "")
+            title_id = res_ids.get("Title", "")
+            recycler = root.find(f".//node[@resource-id='{res_ids.get('RecyclerView', '')}']")
+            if recycler is None:
+                return None
+            for item in recycler.findall(f".//node[@resource-id='{track_item_id}']"):
+                title_node = item.find(f".//node[@resource-id='{title_id}']")
+                title = title_node.get("text", "") if title_node is not None else ""
+                if title == track.title:
+                    return self._node_to_dict(item)
+            return None
+        except Exception:
+            return None
+
     def _node_to_dict(self, node: ET.Element) -> dict:
         return {
             "bounds": node.get("bounds", ""),

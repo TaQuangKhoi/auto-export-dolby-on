@@ -63,6 +63,9 @@ class AdbClient:
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 800) -> None:
         self._run([self.adb_path, "shell", "input", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration_ms)])
 
+    def press_back(self) -> None:
+        self._run([self.adb_path, "shell", "input", "keyevent", "4"])
+
     def _run_shell(self, args: list[str]) -> str:
         result = subprocess.run(
             [self.adb_path, "shell"] + args,

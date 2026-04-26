@@ -6,6 +6,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 from rich import box
+from rich.panel import Panel
+from rich.progress import Progress, TextColumn, BarColumn
 
 from domain.exceptions import AdbNotFoundError
 from domain.interfaces import IAdbClient, IDolbyApp, IUiAutomator, ICoordinates
@@ -181,6 +183,7 @@ def export(
     """Export tracks to Google Drive."""
     ctx.ensure()
     _require_dolby_foreground()
+    console = Console()
 
     if not index and not all:
         typer.secho("Specify --index <N> or --all", fg=typer.colors.YELLOW, err=True)
@@ -197,20 +200,22 @@ def export(
 
     targets = [result.tracks[index - 1]] if index else result.tracks
 
-    for track in targets:
-        typer.echo(f"\nExporting: {track.title}...")
+    console.print(Panel("[bold cyan]Dolby On Export[/bold cyan]", expand=False))
+
+    for i, track in enumerate(targets, 1):
+        console.print(f"[dim][[/dim][cyan]{i}/{len(targets)}[/cyan][dim]][/dim] [bold]{track.title}[/bold]", end="")
         exp_result = export_use_case.execute(track)
         if exp_result.is_success:
-            typer.secho(f"  [OK] Exported: {track.title}", fg=typer.colors.GREEN)
+            console.print(" [green]OK[/green]")
             if delete_after:
-                typer.echo("  Deleting after export...")
+                console.print("  [dim]Deleting...[/dim]", end="")
                 del_result = delete_use_case.execute(track)
                 if del_result.is_success:
-                    typer.secho(f"  [OK] Deleted: {track.title}", fg=typer.colors.GREEN)
+                    console.print(" [green]DELETED[/green]")
                 else:
-                    typer.secho(f"  [WARN] Delete failed: {del_result.error}", fg=typer.colors.YELLOW)
+                    console.print(f" [yellow]DELETE FAIL: {del_result.error}[/yellow]")
         else:
-            typer.secho(f"  [FAIL] {exp_result.error}", fg=typer.colors.RED, err=True)
+            console.print(f" [red]FAIL: {exp_result.error}[/red]")
 
 
 @app.command()
@@ -257,6 +262,7 @@ def export_all(
     """Export all tracks and show summary."""
     ctx.ensure()
     _require_dolby_foreground()
+    console = Console()
 
     list_use_case = ListTracksUseCase(ctx.adb, ctx.dolby, ctx.ui, CONFIG)
     result = list_use_case.execute(scroll_all=True)
@@ -264,7 +270,8 @@ def export_all(
         typer.secho("No tracks found.", fg=typer.colors.YELLOW)
         raise typer.Exit(1)
 
-    typer.echo(f"Found {len(result.tracks)} track(s). Starting export...\n")
+    console.print(Panel("[bold cyan]Dolby On Export All[/bold cyan]", expand=False))
+    console.print(f"[dim]Found [cyan]{len(result.tracks)}[/cyan] track(s)[/dim]\n")
 
     export_use_case = ExportTrackUseCase(ctx.adb, ctx.ui, ctx.dolby, ctx.coords, CONFIG)
     delete_use_case = DeleteTrackUseCase(ctx.adb, ctx.dolby, ctx.coords, CONFIG)
@@ -273,44 +280,53 @@ def export_all(
     processed = succeeded = failed = 0
     failed_tracks = []
 
-    while tracks:
-        current = tracks[0]
-        processed += 1
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[cyan]Exporting...", total=len(result.tracks))
 
-        typer.echo(f"[{processed}/{len(result.tracks)}] {current.title}...", nl=False)
+        while tracks:
+            current = tracks[0]
+            processed += 1
+            progress.update(task, description=f"[cyan]{current.title[:30]}[/cyan]" if len(current.title) > 30 else f"[cyan]{current.title}[/cyan]", advance=1)
 
-        exp_result = export_use_case.execute(current)
-        if not exp_result.is_success:
-            failed += 1
-            failed_tracks.append({"title": current.title, "reason": f"Export: {exp_result.error}"})
-            typer.secho(f" FAIL", fg=typer.colors.RED)
-            _rescan(tracks)
-            continue
-
-        if delete_after:
-            del_result = delete_use_case.execute(current)
-            if not del_result.is_success:
+            exp_result = export_use_case.execute(current)
+            if not exp_result.is_success:
                 failed += 1
-                failed_tracks.append({"title": current.title, "reason": f"Delete: {del_result.error}"})
-                typer.secho(f" OK but DELETE FAIL", fg=typer.colors.YELLOW)
+                failed_tracks.append({"title": current.title, "reason": f"Export: {exp_result.error}"})
                 _rescan(tracks)
+                progress.update(task, advance=-1)
                 continue
 
-        succeeded += 1
-        typer.secho(f" OK", fg=typer.colors.GREEN)
-        _rescan(tracks)
+            if delete_after:
+                del_result = delete_use_case.execute(current)
+                if not del_result.is_success:
+                    failed += 1
+                    failed_tracks.append({"title": current.title, "reason": f"Delete: {del_result.error}"})
+                    _rescan(tracks)
+                    progress.update(task, advance=-1)
+                    continue
 
-    typer.echo(f"\n{'='*50}")
-    typer.echo(f"  Processed: {processed}")
-    typer.secho(f"  Succeeded: {succeeded}", fg=typer.colors.GREEN)
-    typer.secho(f"  Failed:    {failed}", fg=typer.colors.RED if failed else typer.colors.WHITE)
+            succeeded += 1
+            _rescan(tracks)
+
+    console.print()
+    summary_table = Table(box=box.ROUNDED, show_header=False, expand=False)
+    summary_table.add_column("Label", style="bold")
+    summary_table.add_column("Value")
+    summary_table.add_row("Processed", str(processed))
+    summary_table.add_row("[green]Succeeded[/green]", str(succeeded))
+    summary_table.add_row("[red]Failed[/red]", str(failed) if failed else "0")
+    summary_table.add_row("Remaining in library", str(len(tracks)))
+    console.print(summary_table)
 
     if failed_tracks:
-        typer.echo("\nFailed tracks:")
+        console.print("\n[red bold]Failed tracks:[/red bold]")
         for ft in failed_tracks:
-            typer.echo(f"  - {ft['title']}: {ft['reason']}")
-
-    typer.secho(f"\nRemaining tracks in library: {len(tracks)}", fg=typer.colors.CYAN)
+            console.print(f"  [red]-[/red] {ft['title']}: [dim]{ft['reason']}[/dim]")
 
 
 def _rescan(tracks: list) -> None:
