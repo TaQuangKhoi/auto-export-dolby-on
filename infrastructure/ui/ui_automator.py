@@ -57,17 +57,23 @@ class UiAutomator:
         wait_times = self._config.get("WaitTimes", {})
         interval = wait_times.get("ExportCheckInterval", 2)
         start = time.time()
+        check_count = 0
 
         while (time.time() - start) < max_wait:
+            check_count += 1
+            elapsed = round(time.time() - start, 1)
             try:
                 xml = self._adb.dump_ui()
-                if self._is_save_dialog_visible(xml):
-                    elapsed = round(time.time() - start, 1)
+                is_visible = self._is_save_dialog_visible(xml)
+                print(f"\033[90m[Wait] Check #{check_count} @ {elapsed}s: dialog_visible={is_visible}, xml_len={len(xml)}\033[0m")
+                if is_visible:
+                    print(f"\033[90m[Wait] Dialog detected at {elapsed}s!\033[0m")
                     return xml
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"\033[90m[Wait] Check #{check_count} @ {elapsed}s: error={e}\033[0m")
             time.sleep(interval)
 
+        print(f"\033[90m[Wait] Timeout after {max_wait}s ({check_count} checks)\033[0m")
         return None
 
     def _is_save_dialog_visible(self, xml: str) -> bool:
@@ -77,7 +83,11 @@ class UiAutomator:
             re.search(r'text="Drive"|content-desc="Drive"', xml) or
             re.search(r'JUST ONCE|ALWAYS', xml) or
             re.search(r'text="Save file"', xml) or
-            re.search(r'com\.android\.internal:id/button', xml)
+            re.search(r'com\.android\.internal:id/button', xml) or
+            re.search(r'oplus:id/resolver_tabhost', xml) or
+            re.search(r'oplus:id/resolver_pager', xml) or
+            re.search(r'text="Save to Files"', xml) or
+            re.search(r'text="Share via "Nearby Share""', xml)
         )
 
     def scroll_down(self, duration_ms: int = 800) -> None:

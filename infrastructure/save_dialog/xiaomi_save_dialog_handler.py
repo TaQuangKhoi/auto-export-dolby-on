@@ -22,9 +22,20 @@ class XiaomiSaveDialogHandler(BaseSaveDialogHandler):
         if not save_dialog_xml:
             return False
 
-        drive_btn = self._app.find_element(save_dialog_xml, text="Drive")
+        return self._tap_drive_and_save(save_dialog_xml)
+
+    def handle_save_dialog_with_xml(self, adb_client, ui_automator, coords, config: dict, dialog_xml: str) -> bool:
+        self._adb = adb_client
+        self._ui = ui_automator
+        self._coords = coords
+        self._config = config
+
+        return self._tap_drive_and_save(dialog_xml)
+
+    def _tap_drive_and_save(self, dialog_xml: str) -> bool:
+        drive_btn = self._app.find_element(dialog_xml, text="Drive")
         if not drive_btn:
-            drive_btn = self._app.find_element(save_dialog_xml, content_desc="Drive")
+            drive_btn = self._app.find_element(dialog_xml, content_desc="Drive")
         if not drive_btn:
             return False
 

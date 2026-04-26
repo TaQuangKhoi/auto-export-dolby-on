@@ -31,33 +31,47 @@ class OppoSaveDialogHandler(BaseSaveDialogHandler):
         self._coords = coords
         self._config = config
 
-        max_wait = config["WaitTimes"]["ExportMaxWait"]
-        save_dialog_xml = self._wait_for_dialog(max_wait)
-        if not save_dialog_xml:
+        dialog_xml = self._wait_for_dialog(config["WaitTimes"]["ExportMaxWait"])
+        if not dialog_xml:
             return False
 
-        save_targets = [
-            ("text", "Save to Files"),
-            ("text", "Files by Google"),
-            ("text", "Download"),
-        ]
-        for attr, value in save_targets:
-            if attr == "text":
-                if self._tap_element(save_dialog_xml, text=value):
-                    self._sleep(3)
-                    return True
-            else:
-                if self._tap_element(save_dialog_xml, resource_id=value):
-                    self._sleep(3)
-                    return True
+        return self._tap_save_target(dialog_xml)
 
-        first_item = self._find_first_clickable_item(save_dialog_xml)
+    def handle_save_dialog_with_xml(self, adb_client, ui_automator, coords, config: dict, dialog_xml: str) -> bool:
+        self._adb = adb_client
+        self._ui = ui_automator
+        self._coords = coords
+        self._config = config
+
+        return self._tap_save_target(dialog_xml)
+
+    def _tap_save_target(self, dialog_xml: str) -> bool:
+        print(f"\033[90m[OPPO] _tap_save_target called, XML length: {len(dialog_xml)}\033[0m")
+        save_targets = [
+            "Save to Files",
+            "Files by Google",
+            "Download",
+        ]
+        for value in save_targets:
+            elem = self._app.find_element(dialog_xml, text=value)
+            print(f"\033[90m[OPPO] Looking for '{value}': {'FOUND' if elem else 'NOT FOUND'}\033[0m")
+            if elem:
+                center = self._coords.bounds_to_center(elem["bounds"])
+                print(f"\033[90m[OPPO] Tapping '{value}' at {center}\033[0m")
+                self._adb.tap_at(*center)
+                self._sleep(3)
+                return True
+
+        print("\033[90m[OPPO] No standard target found, trying fallback...\033[0m")
+        first_item = self._find_first_clickable_item(dialog_xml)
         if first_item:
             center = self._coords.bounds_to_center(first_item["bounds"])
+            print(f"\033[90m[OPPO] Tapping fallback item at {center}\033[0m")
             self._adb.tap_at(*center)
             self._sleep(3)
             return True
 
+        print("\033[90m[OPPO] No clickable element found\033[0m")
         return False
 
     def _find_first_clickable_item(self, xml_string: str) -> dict | None:
